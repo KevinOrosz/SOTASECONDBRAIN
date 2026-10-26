@@ -48,7 +48,7 @@ def tearDownModule():
 
 class WriteCase(unittest.TestCase):
     indexes = False  # kb-write reads kb-graph.json only for link types; Links builds it
-    git = False  # unland reads prior bytes from git; Land turns it on
+    git = False  # unland reads prior bytes from KB/inbox/_objects; git is only the legacy fallback
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -315,7 +315,10 @@ class SealAndList(WriteCase):
                                   "--body-file", str(self.body), "--origin", "chat")[0], 2)
 
     def test_contract_constants_and_no_network(self):
-        self.assertEqual(kbw.LEDGER_EVENTS, ("put", "withdraw", "reject", "land", "unland", "resolve", "adopt", "reseal"))
+        self.assertEqual(kbw.LEDGER_EVENTS, ("put", "withdraw", "reject", "land", "unland", "resolve", "adopt", "reseal", "recover"))
+        self.assertEqual(kbw.FAULT_POINTS, ("after-page", "after-derived", "after-ledger", "after-proposal", "after-case"))
+        self.assertIn("_objects", kbw.RESERVED_DIRS)
+        self.assertIn("_ops", kbw.RESERVED_DIRS)
         self.assertEqual(set(kbw.VERB_FN), set(kbw.VERBS))
         self.assertEqual({"WP1", "WP2"} <= set(kblint.RULES), True)
         self.assertEqual(kblint.WP1_SEVERITY, "WARN")
@@ -326,11 +329,11 @@ class SealAndList(WriteCase):
 
 
 LONG = " ".join(["Inbox write-back lands through one gate with a ledger row and a seal."] * 12)
+SUPERSEDE = "# First\n\n## Core Claim\nFirst claim here, sharpened.\n\n## Evidence\nZebrafish evidence kept. %s\n" % LONG
 
 
 class Land(WriteCase):
     indexes = True
-    git = True
 
     def setUp(self):
         super().setUp()
@@ -428,13 +431,134 @@ class Land(WriteCase):
         self.assertEqual(rc, 0, res)
         self.assertTrue(self.ledger()[-1].get("hook_skipped"), self.ledger()[-1])
 
-    def test_p2s2_08b_correction_land_stands_when_the_hook_fails(self):
+    def test_p2s2_08b_correction_land_rolls_back_when_the_hook_fails(self):
         rc, out = self.article("--origin", "correction:C-0001")  # C-0001 has no record: landed exits nonzero
         self.assertEqual(rc, 0, out)
+        state, rows = kb_testkit.state_digest(self.root), self.ledger()
         rc, res = self.land(out["id"])
+        self.assertEqual(rc, 3, res)
+        self.assertIn("regression registration failed", res["detail"])
+        self.assertEqual((kb_testkit.state_digest(self.root), self.ledger()), (state, rows))
+        self.assertEqual(list((self.inbox / "_ops").iterdir()), [])
+
+    # ---- recovery: preimages, journal, fault points ----
+
+    def fault(self, point, *args):
+        import os
+        os.environ[kbw.FAULT_ENV] = point
+        try:
+            return self.cli(*args)
+        finally:
+            os.environ.pop(kbw.FAULT_ENV, None)
+
+    def state(self, pid):
+        meta, _ = kbw.parse((self.inbox / (pid + ".md")).read_text(encoding="utf-8"))
+        return meta["state"]
+
+    def test_recovery_01_land_stores_preimages_content_addressed(self):
+        self.body.write_text(SUPERSEDE, encoding="utf-8")
+        pid = self.article("--supersedes", "wiki:first", "--category", "alpha")[1]["id"]
+        rc, res = self.land(pid)
         self.assertEqual(rc, 0, res)
-        self.assertNotIn("hook_skipped", self.ledger()[-1])
-        self.assertTrue(any("kb-correct.py landed C-0001" in w for w in res.get("warnings", [])), res)
+        prior = self.ledger()[-1]["prior"]["KB/wiki/alpha/first.md"]
+        obj = self.inbox / "_objects" / prior
+        self.assertEqual(kbw.sha256(obj.read_bytes()), prior)
+        self.assertEqual(obj.read_text(encoding="utf-8"), kb_testkit.WIKI["alpha/first.md"])
+        self.assertFalse((self.root / ".git").exists())
+        self.assertEqual(self.wp("WP2")[0], 0)  # _objects/ is reserved
+
+    def test_recovery_02_supersede_then_unland_without_git(self):
+        wiki = self.wiki_digest()
+        self.body.write_text(SUPERSEDE, encoding="utf-8")
+        pid = self.article("--supersedes", "wiki:first", "--category", "alpha")[1]["id"]
+        self.assertEqual(self.land(pid)[0], 0)
+        self.assertNotEqual(self.wiki_digest(), wiki)
+        rc, out = self.cli("unland", pid, "--endorsed-by", "owner", "--reason", "test")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("KB/wiki/alpha/first.md", out["exact"])
+        self.assertEqual(self.wiki_digest(), wiki)
+        self.assertEqual(self.state(pid), "open")
+
+    def test_recovery_03_unland_refuses_a_page_changed_since_the_land(self):
+        pid = self.article()[1]["id"]
+        rc, res = self.land(pid)
+        page = self.root / res["path"]
+        page.write_text(page.read_text(encoding="utf-8") + "\nHand edit.\n", encoding="utf-8")
+        rc, out = self.cli("unland", pid, "--endorsed-by", "owner", "--reason", "test")
+        self.assertEqual(rc, 4, out)
+        self.assertIn("changed since the land", out["detail"])
+
+    def test_recovery_04_corrupt_object_is_never_restored(self):
+        self.body.write_text(SUPERSEDE, encoding="utf-8")
+        pid = self.article("--supersedes", "wiki:first", "--category", "alpha")[1]["id"]
+        self.assertEqual(self.land(pid)[0], 0)
+        prior = self.ledger()[-1]["prior"]["KB/wiki/alpha/first.md"]
+        (self.inbox / "_objects" / prior).write_bytes(b"tampered\n")
+        self.assertIsNone(kbw.get_object(self.root, prior))
+        rc, out = self.cli("unland", pid, "--endorsed-by", "owner", "--reason", "test")
+        self.assertEqual(rc, 4, out)  # no git, no valid object: refuse rather than guess
+
+    def test_recovery_05_land_fault_at_every_point_recovers_and_converges(self):
+        for point in ("after-page", "after-derived", "after-ledger", "after-proposal"):
+            with self.subTest(point=point):
+                self.tearDown()
+                self.setUp()
+                pid = self.article()[1]["id"]
+                state, rows = kb_testkit.state_digest(self.root), self.ledger()
+                rc, out = self.fault(point, "land", pid, "--endorsed-by", "owner")
+                self.assertEqual(rc, 9, out)
+                self.assertEqual(len(list((self.inbox / "_ops").iterdir())), 1)
+                rc, out = self.cli("list")  # any invocation recovers first
+                self.assertEqual(rc, 0, out)
+                rec = out["recovered"][0]
+                self.assertEqual(self.ledger()[-1]["event"], "recover")
+                self.assertEqual(list((self.inbox / "_ops").iterdir()), [])
+                if point == "after-proposal":  # the last step: the op completes
+                    self.assertEqual(rec["action"], "completed")
+                    self.assertEqual(self.state(pid), "landed")
+                    self.assertEqual(self.land(pid)[0], 2)  # rerun: already landed
+                else:
+                    self.assertEqual(rec["action"], "rolled back")
+                    self.assertEqual(kb_testkit.state_digest(self.root), state)
+                    self.assertEqual(self.ledger()[:-1], rows)
+                    self.assertEqual(self.land(pid)[0], 0)  # rerun converges
+                self.assertEqual(self.state(pid), "landed")
+                self.assertEqual(len([r for r in self.ledger() if r["event"] == "land"]), 1)
+                self.assertEqual(self.wp("WP1")[0], 0)
+                self.assertEqual(self.wp("WP2")[0], 0)
+
+    def test_recovery_06_unland_fault_at_every_point_recovers_and_converges(self):
+        for point in ("after-page", "after-derived", "after-ledger", "after-proposal"):
+            with self.subTest(point=point):
+                self.tearDown()
+                self.setUp()
+                wiki = self.wiki_digest()
+                pid = self.article()[1]["id"]
+                self.assertEqual(self.land(pid)[0], 0)
+                state, rows = kb_testkit.state_digest(self.root), self.ledger()
+                rc, out = self.fault(point, "unland", pid, "--endorsed-by", "owner", "--reason", "t")
+                self.assertEqual(rc, 9, out)
+                self.assertEqual(self.cli("list")[0], 0)
+                if point == "after-proposal":
+                    self.assertEqual(self.state(pid), "open")
+                else:
+                    self.assertEqual((kb_testkit.state_digest(self.root), self.ledger()[:-1]), (state, rows))
+                    self.assertEqual(self.cli("unland", pid, "--endorsed-by", "owner", "--reason", "t")[0], 0)
+                self.assertEqual((self.state(pid), self.wiki_digest()), ("open", wiki))
+                self.assertEqual(self.wp("WP1")[0], 0)
+
+    def test_recovery_07_legacy_instance_without_objects_falls_back_to_git(self):
+        self.tearDown()
+        self.git = True
+        self.setUp()
+        wiki = self.wiki_digest()
+        self.body.write_text(SUPERSEDE, encoding="utf-8")
+        pid = self.article("--supersedes", "wiki:first", "--category", "alpha")[1]["id"]
+        self.assertEqual(self.land(pid)[0], 0)
+        shutil.rmtree(self.inbox / "_objects")  # an instance from before the preimage store
+        rc, out = self.cli("unland", pid, "--endorsed-by", "owner", "--reason", "test")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.wiki_digest(), wiki)
 
     def test_config_owner_and_agents_are_instance_settings(self):
         (self.root / "KB" / "kb.json").write_text(json.dumps({"owner": "ada", "agents": ["SCOUT"]}), encoding="utf-8")

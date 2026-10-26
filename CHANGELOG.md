@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Hardening PR1: recovery.
+
+- Undo works without Git. Every `land` and `unland` stores each touched file's prior bytes, write-once
+  and hash-verified, at `KB/inbox/_objects/<sha256>`; `unland` restores from there first. A page changed
+  since its land is refused (exit 4) with the hashes in the message.
+- Atomic correction landing. A failing `kb-correct landed` hook now rolls the whole land back (exit 3)
+  instead of warning and letting the land stand, so no correction enters the wiki without its case.
+- Operation journal `KB/inbox/_ops/<op>.json` (planned files with pre/post hashes, step markers). Every
+  `kb-write` and `kb-correct` invocation first finishes or rolls back an unfinished op and logs one new
+  `recover` ledger event. `_objects/` and `_ops/` are reserved inbox names (WP2).
+- `KB_WRITE_FAULT` gains named crash points: `after-page`, `after-derived`, `after-ledger`,
+  `after-proposal`, `after-case` (exit 9, test seam). Each is tested to end in full success or
+  byte-identical restored state, and a rerun converges.
+- Migration: none needed. Instances without `_objects/` keep working; `unland` of a land made before
+  this release falls back to Git history as before.
+
 ## 0.2.1 — 2026-10-26
 
 - WIZARD setup agent: open the repo in any AI agent tool and type `WIZARD` (`souls/WIZARD/soul.md`).

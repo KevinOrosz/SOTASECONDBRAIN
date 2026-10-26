@@ -746,6 +746,16 @@ def write_cases(root: Path, cases: list) -> None:
     tmp.replace(p)
 
 
+def recover(root: Path) -> list:
+    """Finish or roll back an unfinished kb-write op before doing anything (kb-write owns the journal)."""
+    kbw = _load("kb-write.py")
+    kbw.configure(root)
+    try:
+        return kbw.recover(root)
+    except kbw.Fail as e:
+        raise Fail(2, "kb-write recover: %s — %s" % (e.error, e.detail))
+
+
 def cmd_landed(root: Path, a) -> dict:
     need(a.ledger_seq is not None and a.ledger_seq >= 1, "landed needs --ledger-seq N")
     rec = load_record(root, a.cid)
@@ -880,6 +890,8 @@ def main(argv=None) -> int:
     root = Path(a.root).resolve()
     try:
         need((root / "KB" / "wiki").is_dir(), "%s/KB/wiki not found" % root)
+        if a.verb != "landed" and KBW.is_file():  # landed runs inside a kb-write op, under its lock
+            recover(root)
         if a.verb in ("diagnose", "packet", "record", "validate", "kill", "land", "landed"):
             need(a.cid, "%s needs a CID" % a.verb)
         if a.verb in ("packet", "record"):

@@ -140,7 +140,7 @@ class TestLand(Base):
         super().setUp()
         shutil.rmtree(self.tmp)
         self.tmp = Path(tempfile.mkdtemp())
-        self.root = kb_testkit.fixture(self.tmp, regressions=True, git=True)
+        self.root = kb_testkit.fixture(self.tmp, regressions=True)  # no git: undo reads KB/inbox/_objects
         (self.root / "KB" / "RAW" / "tides.md").write_text(RAW_TIDES, encoding="utf-8")
         self.kbw = kb_testkit.load("kb-write.py")
         self.assertEqual(self.kbw_cli("seal")[0], 0)
@@ -243,6 +243,50 @@ class TestLand(Base):
         rc, out = self.cli("landed", "C-0001", "--ledger-seq", str(res["ledger_seq"]))
         self.assertEqual((rc, out["appended"]), (0, False), out)
         self.assertEqual(len(self.cases()), n)
+
+    def test_27b_failing_hook_rolls_the_whole_land_back(self):
+        pid = self.proposed()
+        state, cases, rec = kb_testkit.state_digest(self.root), self.cases(), self.rec()
+        hook = self.tmp / "hook.py"
+        hook.write_text("import sys\nsys.exit(1)\n", encoding="utf-8")
+        with mock.patch.object(self.kbw, "HOOK", hook):
+            rc, res = self.kbw_cli("land", pid, "--endorsed-by", "owner")
+        self.assertEqual(rc, 3, res)
+        self.assertEqual((kb_testkit.state_digest(self.root), self.cases(), self.rec()), (state, cases, rec))
+        self.assertEqual(self.kbw_cli("land", pid, "--endorsed-by", "owner")[0], 0)  # rerun converges
+        self.assertEqual(len(self.cases()), len(cases) + 1)
+
+    def test_27c_correction_land_fault_at_every_point_recovers_without_duplicate_cases(self):
+        import os
+        for point in self.kbw.FAULT_POINTS:
+            with self.subTest(point=point):
+                self.tearDown()
+                self.setUp()
+                pid = self.proposed()
+                state, n = kb_testkit.state_digest(self.root), len(self.cases())
+                os.environ[self.kbw.FAULT_ENV] = point
+                try:
+                    rc, out = self.kbw_cli("land", pid, "--endorsed-by", "owner")
+                finally:
+                    os.environ.pop(self.kbw.FAULT_ENV, None)
+                self.assertEqual(rc, 9, out)
+                self.assertEqual(self.cli("status")[0], 0)  # a kb-correct invocation recovers too
+                self.assertEqual(list((self.root / "KB/inbox/_ops").iterdir()), [])
+                rows = [json.loads(x) for x in (self.root / "KB/inbox/_ledger.jsonl").read_text().splitlines()]
+                self.assertEqual(rows[-1]["event"], "recover")
+                if point == "after-case":
+                    self.assertIn("completed", rows[-1]["reason"])
+                else:
+                    self.assertIn("rolled back", rows[-1]["reason"])
+                    self.assertEqual((kb_testkit.state_digest(self.root), len(self.cases())), (state, n))
+                    self.assertEqual(self.rec()["stage"], "proposed")
+                    rc, res = self.kbw_cli("land", pid, "--endorsed-by", "owner")
+                    self.assertEqual((rc, res.get("hook")), (0, "ok"), res)
+                self.assertEqual(self.rec()["stage"], "landed")
+                self.assertEqual(len(self.cases()), n + 1)
+                self.assertEqual(len([c for c in self.cases() if c["origin"] == "correction:C-0001"
+                                      and c["failing_version"] == self.rec()["compile"]["before_sha256"]]), 1)
+                self.assertEqual(self.regressions_rc(), 0)
 
     def test_31_replay_all_waits_then_judges_answer_cases(self):
         rc, out = self.cli("replay-all")
