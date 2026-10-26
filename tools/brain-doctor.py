@@ -126,6 +126,14 @@ def _resolver_scan(wiki: Path) -> dict[str, Any]:
     return module.scan(wiki)
 
 
+def _load_json_or_empty(path: Path) -> dict:
+    """{} when the file is absent; raises on a file that exists but is not a JSON object."""
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
 def _graph_check(root: Path, baseline_path: Path) -> tuple[dict[str, str], dict[str, Any]]:
     try:
         current = _resolver_scan(root / "KB" / "wiki")
@@ -145,6 +153,14 @@ def _graph_check(root: Path, baseline_path: Path) -> tuple[dict[str, str], dict[
             "unique_blocked",
         )
     }
+    if not baseline_path.exists() or "graph" not in _load_json_or_empty(baseline_path):
+        # First run: record today's link counts as the baseline the next runs compare against.
+        data = _load_json_or_empty(baseline_path)
+        data["graph"] = {k: metrics[k] for k in ("internal_occurrences", "resolved_occurrences",
+                                                  "unresolved_occurrences", "article_count")}
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        return _check("graph", "PASS", f"baseline created at {baseline_path.name} (first run)"), metrics
     try:
         baseline = _load_json(baseline_path)
         base_graph = baseline["graph"]

@@ -2,6 +2,8 @@
 
 ## 0.2.0 — 2026-10-26
 
+- `make status` no longer reports FAIL on a fresh install: the doctor records its link baseline on first run.
+
 Lean path complete (build sessions 6–8).
 
 - New: `tests/test-kb-loop-e2e.py` (LOOP-E2E, session 8). On a throwaway fixture, driving every tool as a
