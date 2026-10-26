@@ -184,6 +184,8 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
  "files":{"KB/wiki/topic/x.md":"<sha256>"},"prior":{"KB/wiki/topic/x.md":null},"resolved":[],"reason":""}
 ```
 
+**Source hashes (provenance).** A `land` row also carries `"sources": {"<raw name>": "<sha256>"}`: every `raw:` ref of the proposal plus every `[[RAW/...]]` link on the landed page's `**Sources:**` lines, hashed from `KB/RAW` at land time. A named raw file that is absent refuses the land (exit 2). `kb-provenance --check` FAILs when a source recorded on a live land (one not later unlanded) is missing or its bytes drifted, and WARNs on a landed page whose land row predates `sources`.
+
 **Expected hash and tracing.**
 - A wiki path's expected hash is its last ledger `files` entry. If it has none, the seal entry.
 - The ledger `put` row is an inbox file's provenance trace.
@@ -216,6 +218,10 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 - **Strict judging.** A judge result is `{"verdict": "pass|fail|unclear", "evidence": "<span quoted verbatim from the answer>", "points": [{point, met, quote}]}`. Only a `pass` whose evidence span appears in the answer, with every point met and no forbidden literal, passes. Malformed JSON, another verdict string (`PASS` included), `unclear` or a missing or unquoted span is recorded and counts as FAIL.
 - **Freshness.** Every verdict is bound to `{corpus, case, tools}`: the sha256 seal of `KB/wiki/**/*.md` (without generated `_index.md` pages; validate also leaves out the target page, which its own before/after hashes guard), the case's judged keys (`kind q expected forbidden targets ranker k`), and the `tools/*.py` source. A result whose binding moved is stale: validate restarts, `land` exits 1, `landed` exits 1 (the kb-write land rolls back), `replay-all` exits 2 until `--fresh`, and `--regressions` reports the case `UNCHECKED`.
 
+**Retrieval method.** Results record what produced them. `kb-query --json` carries `retrieval: {ranker, tool, version, k, index_inputs_hash}`; `kb-eval` carries `retrieval.old` / `retrieval.new` and `--regressions` carries `retrieval_method`, each `{ranker, tool, version (tool sha256[:12]), tools_hash, k}`. The text reports print the same line.
+
+**Derived-output integrity.** `kb-index.json`, `content-seeds.json`, the dashboard (`<!-- inputs_hash: ... -->`) and `kb-graph.json` store `inputs_hash`: sha256 over `(path, sha256)` of every non-`_index.md` wiki page they were built from. `kb-provenance --check` (0 PASS / 2 WARN / 1 FAIL): unreadable or self-inconsistent index or graph = FAIL; absent, legacy or another wiki's hash = WARN; a stale seed file or dashboard, or a `[[RAW/...]]` Sources link naming no file = WARN. Every non-PASS line names its fix command (`bin/kb index` for derived outputs). Trust boundaries: `docs/TRUST.md`.
+
 ### 1.5 verify.sh blocks
 
 **Renumber first.** P1-S1 fixes the live duplicate 12: 11 Git shield, 12 PRISM, 13 Brain health, 14 Voice, 15 KB graph.
@@ -228,6 +234,7 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 | 17 | P2 | `--rule WP1`, `--rule WP2`, `test-kb-write.py` |
 | 18 | P3 | `kb-eval.py --regressions evals/regressions.jsonl` + `test-kb-correct.py` |
 | 19 | P4 | `test-brain-dream.py` |
+| 1b | PR3 | `kb-provenance.py --check` (sources, index/graph inputs_hash, cache freshness) + `test-kb-provenance.py` |
 | 20 | E2E | runs last |
 
 **Every suite asserts:**

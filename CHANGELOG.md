@@ -35,6 +35,21 @@ Hardening PR2: evaluation honesty.
 - Same-day corrections. A second correction to a page on the day of the first no longer fails the
   minimality gate on `Updated`; tested with two corrections opened and landed in one day.
 
+Hardening PR3: provenance and verification.
+
+- Source preservation. `land` hashes every raw source (the proposal's `raw:` refs and the page's
+  `**Sources:** [[RAW/...]]` links) into the ledger land row as `sources`, and refuses a land whose raw
+  file is absent (exit 2). New `tools/kb-provenance.py --check` FAILs on a missing or drifted landed
+  source and WARNs on lands made before this release.
+- Retrieval method recorded. `kb-query --json`, `kb-eval` and `kb-eval --regressions` report ranker,
+  tool version hash, tools hash and k, so a result can be reproduced.
+- Index integrity. `kb-index.json`, `content-seeds.json`, the dashboard and `kb-graph.json` store the
+  `inputs_hash` of the wiki they were built from. Stale = WARN with `bin/kb index`; corrupt = FAIL.
+- `make verify` runs the provenance gate (block 1b) and flags dangling `[[RAW/...]]` Sources links.
+- `docs/TRUST.md`: what is deterministic, what is model judgment, what the owner gate covers, and the
+  threat model for inbox inputs.
+- Migration: run `bin/kb index` once to stamp `inputs_hash`; older land rows only WARN.
+
 ## 0.2.1 — 2026-10-26
 
 - WIZARD setup agent: open the repo in any AI agent tool and type `WIZARD` (`souls/WIZARD/soul.md`).

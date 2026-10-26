@@ -112,7 +112,8 @@ def _load(name: str):
 sys.path.insert(0, str(TOOLS))
 import kb_config  # noqa: E402
 
-kblint = _load("kb-lint.py")  # header contract: CONFIDENCE, TYPES, INDEX_TYPES
+kblint = _load("kb-lint.py")
+prov = _load("kb-provenance.py")  # raw source hashing at land  # header contract: CONFIDENCE, TYPES, INDEX_TYPES
 autolink = _load("kb-autolink.py")  # _known_targets for wiki: refs and link ends
 
 INBOX = "KB/inbox"
@@ -1207,6 +1208,9 @@ def land_one(root: Path, pid: str, dry: bool) -> dict:
             page_rel, page, warns = compose_article(root, meta, body, pid, seq, today, known)
         else:
             (page_rel, page), warns = compose_link(root, meta, known), []
+        names = prov.raw_refs(page if meta["kind"] == "article" else "", meta.get("source_refs", []))
+        sources, gone = prov.hash_sources(root, names)
+        need(not gone, "%s: raw source(s) not in KB/RAW: %s" % (pid, ", ".join(gone)))
         staged = {page_rel: page.encode("utf-8")}
         staged.update(stage_runtime(root, meta, page, 1, today))
         dirty = sorted(set(staged) & set(drift(root, rows)))
@@ -1226,7 +1230,7 @@ def land_one(root: Path, pid: str, dry: bool) -> dict:
                     "autolink unresolved <= %d" % unresolved, "kb-eval --check == 0, recall@6 >= preflight", regress,
                     "kb-lint 0 FAIL", "any miss: restore every captured byte, exit 3"]
             return {"ok": True, "verb": "land", "id": pid, "path": page_rel, "ledger_seq": None, "dry_run": True,
-                    "staged": sorted(staged), "resolves": gaps, "postcheck": plan, "warnings": warns,
+                    "staged": sorted(staged), "sources": sources, "resolves": gaps, "postcheck": plan, "warnings": warns,
                     "diff": unified(root, staged)}
         base = {"unresolved": unresolved, "recall": _load("kb-eval.py").run(root)["new"]["combined"]}
         cid = meta["origin"][len("correction:"):] if meta["origin"].startswith("correction:") else ""
@@ -1236,6 +1240,7 @@ def land_one(root: Path, pid: str, dry: bool) -> dict:
             rels += [REGRESSIONS, "%s/_corrections/%s/record.json" % (INBOX, cid)]
         op = Op(root, "land", pid, rels, "after-case" if hooked else "after-proposal")
         out = {"ok": True, "verb": "land", "id": pid, "path": page_rel, "ledger_seq": seq, "resolved": gaps,
+               "sources": sources,
                "warnings": warns}
         try:
             out["postcheck"] = apply(root, "land", staged, base, op)
@@ -1244,7 +1249,9 @@ def land_one(root: Path, pid: str, dry: bool) -> dict:
             files = {p: sha256(d) for p, d in staged.items()}
             prior = {p: op.pre(p) for p in staged}
             files[rel], prior[rel] = sha256(data), sha256(old)
-            extra = {"hook_skipped": "tools/kb-correct.py absent"} if cid and not HOOK.is_file() else None
+            extra = {"sources": sources}
+            if cid and not HOOK.is_file():
+                extra["hook_skipped"] = "tools/kb-correct.py absent"
             append_ledger(root, "land", "land", pid, owner(root), meta["origin"], files, prior, resolved=gaps,
                           extra=extra)
             op.step("after-ledger")

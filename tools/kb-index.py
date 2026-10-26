@@ -22,6 +22,11 @@ import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 import html  # noqa: E402
 import kb_config  # noqa: E402
+import importlib.util  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location("kb_provenance", Path(__file__).resolve().parent / "kb-provenance.py")
+prov = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(prov)
 
 
 def paths(root: Path):
@@ -79,6 +84,7 @@ def build(root: Path = ROOT) -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     index = {
         "generated": __import__("datetime").date.today().isoformat(),
+        "inputs_hash": prov.inputs_hash(root),
         "article_count": len(articles),
         "categories": sorted({a["category"] for a in articles}),
         "articles": articles,
@@ -100,6 +106,7 @@ def build(root: Path = ROOT) -> int:
         json.dumps(
             {
                 "generated": index["generated"],
+                "inputs_hash": index["inputs_hash"],
                 "note": "Mechanical extraction: every core claim = one seed candidate. "
                 "Ranking and fit are judgment work, not script work.",
                 "seed_count": len(seeds),
@@ -135,6 +142,7 @@ def dashboard_html(index: dict, title: str = "Knowledge Base") -> str:
     return (
         """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
+<!-- inputs_hash: """ + index["inputs_hash"] + """ -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KB Search — """ + str(index["article_count"]) + """ articles</title>
 <style>

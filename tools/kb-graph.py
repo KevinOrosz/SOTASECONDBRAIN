@@ -428,6 +428,7 @@ def build(root: Path, out_dir: Path, quiet: bool = False):
             "supersedes": len([e for e in edges if e["p"] == "SUPERSEDES"]),
         },
         "type_vocabulary": type_vocab,
+        "inputs_hash": _prov().inputs_hash(root),
         "manifest": [{"path": r["path"], "content_hash": r["content_hash"]} for r in records],
         "nodes": {
             "article": nodes_article,
@@ -456,6 +457,14 @@ def build(root: Path, out_dir: Path, quiet: bool = False):
         for e in errors:
             print("  ERROR %s" % e)
     return graph, errors
+
+
+def _prov():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("kb_provenance", Path(__file__).resolve().parent / "kb-provenance.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def check(root: Path, out_dir: Path):

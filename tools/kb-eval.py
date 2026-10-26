@@ -76,6 +76,14 @@ def tools_hash(root: Path) -> str:
     return _sha("\n".join("%s %s" % (p.name, _sha(p.read_bytes())) for p in sorted(d.glob("*.py"))))
 
 
+def retrieval_method(ranker: str, tool: str, k, root: Path = None) -> dict:
+    """What produced a ranked list, so a result can be reproduced: ranker name, the tool file's sha256[:12],
+    the tools_hash it ran under, and k (an int, or 'per-case' when each case sets its own)."""
+    d = Path(__file__).resolve().parent
+    return {"ranker": ranker, "tool": tool, "version": _sha((d / tool).read_bytes())[:12],
+            "tools_hash": tools_hash(root or d.parent)[:12], "k": k}
+
+
 def binding(root: Path, case: dict, skip=()) -> dict:
     return {"corpus": corpus_seal(root, skip), "case": case_hash(case), "tools": tools_hash(root)}
 
@@ -173,6 +181,8 @@ def run(root: Path):
     return {
         "questions": len(rows),
         "recall_at": K,
+        "retrieval": {"old": retrieval_method("keyword", "kb-query.py", K, root),
+                      "new": retrieval_method("hybrid-graph", "kb-graph-query.py", K, root)},
         "old": {"combined": mean("old"), "lookup": mean("old", lookup), "body": mean("old", body)},
         "new": {"combined": mean("new"), "lookup": mean("new", lookup), "body": mean("new", body)},
         "improved": sum(1 for r in rows if r["new"] > r["old"]),
@@ -268,6 +278,7 @@ def regressions(root: Path, path: Path):
             except ValueError:
                 res["violations"].append("line %d: not JSON" % n)
     res["cases"] = len(cases)
+    res["retrieval_method"] = retrieval_method("keyword", "kb-query.py", "per-case", root)
     res["violations"] += validate_cases(cases)
     res["invalid"] = len(res["violations"])
     if res["invalid"]:
@@ -322,6 +333,10 @@ def main(argv):
         print(json.dumps(res, ensure_ascii=False, indent=1))
     else:
         print("=== RETRIEVAL EVAL · recall@%d · %d hand-labeled questions ===" % (K, res["questions"]))
+        for arm in ("old", "new"):
+            m = res["retrieval"][arm]
+            print("  %s: ranker=%s %s@%s k=%s tools=%s" % (arm, m["ranker"], m["tool"], m["version"], m["k"],
+                                                          m["tools_hash"]))
         print("%4s %-7s %5s %5s  %s" % ("#", "shape", "old", "new", "query"))
         for r in res["rows"]:
             flag = "  ^" if r["new"] > r["old"] else ("  v" if r["new"] < r["old"] else "")
@@ -367,6 +382,10 @@ def main_regressions(a, root):
         print("FAIL  %s (%s): %s" % (f["id"], f["origin"], "; ".join(f["problems"])))
     for cid in reg["unchecked_ids"]:
         print("UNCHECKED  %s: answer case with no fresh verdict (run kb-correct replay-all)" % cid)
+    m = reg.get("retrieval_method")
+    if m:
+        print("retrieval method: ranker=%s %s@%s k=%s tools=%s" % (m["ranker"], m["tool"], m["version"], m["k"],
+                                                                  m["tools_hash"]))
     if retrieval is not None:
         print("retrieval combined %.3f (old %.3f)" % (retrieval["new"]["combined"], retrieval["old"]["combined"]))
     print("%s  %d deterministic green, %d answer fresh pass, %d answer UNCHECKED, %d dormant (%d failed, %d invalid, "
