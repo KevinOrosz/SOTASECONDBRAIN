@@ -2,7 +2,7 @@
 
 ## Reporting a problem
 
-Please report security issues privately to the repository owner via GitHub's private vulnerability reporting (Security tab, "Report a vulnerability"), not in a public issue. You'll get an acknowledgement within 7 days.
+Please report security issues privately to the repository owner (GitHub profile, or the contact you were given with access), not in a public issue. Include steps to reproduce and the output of `make verify`. You'll get an acknowledgement within 7 days. If this repo is ever made public, GitHub's private vulnerability reporting (Security tab) will be turned on and becomes the preferred channel.
 
 ## What this project does and doesn't do
 
