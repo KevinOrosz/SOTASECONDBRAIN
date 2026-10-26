@@ -200,7 +200,7 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 ```
 
 **Case kinds.**
-- **answer:** the owner's points are judged one by one. Forbidden literals are pre-checked deterministically.
+- **answer:** the owner's points are judged one by one. Forbidden literals are pre-checked deterministically. `--regressions` counts an active answer case only from a fresh `replay-all` verdict (§1.4 Evaluation honesty); with none it is reported `UNCHECKED`, never as a pass.
 - **retrieval:** every gold stem is in kb-query's top-k, and no forbidden stem is.
 - **artifact:** each expected regex matches at least one targets file, and no forbidden regex matches any.
 
@@ -210,6 +210,11 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 - **I-3 (gold independent of the ranker):** gold ⊆ `evidence_stems ∪ named_stems`, and `gold_locked < retrieval_at`. Checkable from the row alone.
 - **I-4:** an artifact case with empty expected needs forbidden.
 - **I-5:** at most one case per rule origin.
+
+**Evaluation honesty.**
+- **Blind replay.** A replay packet holds `q` and an overlay path only: never the gold points, forbidden literals, `owner_says` or any prior verdict. The overlay's copy of the cases strips answer gold (`expected`, `forbidden`). The judge packet is separate.
+- **Strict judging.** A judge result is `{"verdict": "pass|fail|unclear", "evidence": "<span quoted verbatim from the answer>", "points": [{point, met, quote}]}`. Only a `pass` whose evidence span appears in the answer, with every point met and no forbidden literal, passes. Malformed JSON, another verdict string (`PASS` included), `unclear` or a missing or unquoted span is recorded and counts as FAIL.
+- **Freshness.** Every verdict is bound to `{corpus, case, tools}`: the sha256 seal of `KB/wiki/**/*.md` (without generated `_index.md` pages; validate also leaves out the target page, which its own before/after hashes guard), the case's judged keys (`kind q expected forbidden targets ranker k`), and the `tools/*.py` source. A result whose binding moved is stale: validate restarts, `land` exits 1, `landed` exits 1 (the kb-write land rolls back), `replay-all` exits 2 until `--fresh`, and `--regressions` reports the case `UNCHECKED`.
 
 ### 1.5 verify.sh blocks
 
@@ -655,7 +660,7 @@ LLM result shapes:
 - conflict: `{conflict, primary[{path,line}], reason}`
 - review: `{verdict APPROVE|REJECT, findings[{severity,line,claim}]}`
 - replay: markdown
-- judge: `{points[{point,met,quote}], verdict}`
+- judge: `{verdict pass|fail|unclear, evidence, points[{point,met,quote}]}`; anything else counts as FAIL
 
 **5 CLI.**
 
@@ -674,7 +679,7 @@ P2 exit codes map in: P2 3 or 4 → 1; P2 2 → 2.
 
 `kb-eval.py --regressions PATH [--check]`:
 - On its own, it skips `run()`.
-- With `--check`, it prints `{retrieval, regressions:{cases,checked,passed,failed,deferred_answer,dormant,invalid}}` and the exit code is the OR of both.
+- With `--check`, it prints `{retrieval, regressions:{cases,checked,passed,failed,answer_passed,unchecked,unchecked_ids,dormant,invalid}}` and the exit code is the OR of both.
 
 **6 Algorithm.**
 
@@ -704,10 +709,10 @@ P2 exit codes map in: P2 3 or 4 → 1; P2 2 → 2.
     - **Excluded:** `KB/inbox`.
     - **Redacted:** the origin lines of every active case.
 11. **DET.** On the patched overlay, `kb-eval --root OV --regressions <repo jsonl> --check` must return 0.
-12. **LLM:mid blind replay.** The packet holds q only.
+12. **LLM:mid blind replay.** The packet holds q and the overlay path only (no gold, `owner_says` or verdict).
     - Runs: ×1 on base, ×3 on patched, ×1 per affected answer case.
     - Affected = `pages ∩ target`. Cap at 25. Above that, stop and report.
-13. **DET + LLM:mid judge.** A forbidden-literal pre-check runs first. The judge never sees the diff or `owner_says`.
+13. **DET + LLM:mid judge.** A forbidden-literal pre-check runs first. The judge never sees the diff or `owner_says`. Strict judging and freshness per §1.4.
 14. **DET verdict.** All must hold:
     - base judged FAIL
     - patched passes ≥2 of 3
@@ -727,7 +732,7 @@ P2 exit codes map in: P2 3 or 4 → 1; P2 2 → 2.
 **Blindness.** Packet whitelists are enforced in code. Fresh context is enforced by the skill. [moderate]
 
 **7 Integration hooks.**
-- **Block 18** prints `regressions: N deterministic green, M answer deferred, D dormant`.
+- **Block 18** prints `regressions: N deterministic green, P answer fresh pass, U answer UNCHECKED, D dormant`; U > 0 adds a WARN.
 - **Row 55:**
   ```
   | 55 | `kb-correct` | knowledge | A | The owner flags a wrong brain answer → deterministic diagnose, one-page diff, blind replay, inbox proposal + regression case. Seam: `tools/kb-correct.py` | mid | GURU | DRAFT — P3; first discriminating correction flips LIVE |

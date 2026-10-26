@@ -26,7 +26,14 @@ Stages      open -> diagnosed -> compiled -> reviewed -> validated -> proposed -
 LLM steps   The tool never calls a model. It writes packets/STEP[-RUN].json and reads results/ via
             record. Each packet holds only the keys in PACKETS (enforced in write_packet):
             conflict never sees ranker output; review sees only the diff and target; replay sees only q
-            and an overlay path; judge never sees the diff or owner_says.
+            and an overlay path (blind: no gold, owner_says or verdict in the packet, and the overlay's case
+            copy holds no answer gold); judge never sees the diff or owner_says.
+Judging     A judge result counts as a pass only when kb-eval.judge_pass says so: verdict pass/fail/unclear,
+            an evidence span quoted verbatim from the answer, no forbidden literal. Malformed, unclear or
+            unquoted results are recorded and count as FAIL.
+Freshness   validate binds its verdict to kb-eval.binding (corpus seal without the target page, draft case,
+            tool source). A verdict whose binding moved is stale: validate restarts, land exits 1, landed
+            (the kb-write hook) exits 1 so the land rolls back. replay-all binds each case the same way.
 Labels      0 hits -> unreachable · RAW-only hits -> raw-only · gold ∩ top-k = ∅ -> reachable-unretrieved
             (retrieval case) · gold ⊆ top-k -> reachable-retrieved (skill gap, flagged). A partial overlap
             is reachable-unretrieved with diagnosis.evidence.ambiguous = true.
@@ -451,7 +458,9 @@ def minimality(root: Path, files: dict) -> tuple:
             probs.append("post-image header does not parse (no H1)")
         if ma["type"] != mb["type"]:
             probs.append("Type changed %s -> %s" % (mb["type"], ma["type"]))
-        if not (ma["updated"] and (not mb["updated"] or ma["updated"] > mb["updated"])):
+        today = date.today().isoformat()  # a second correction on the same page the same day keeps today
+        if not (ma["updated"] and (not mb["updated"] or ma["updated"] > mb["updated"]
+                                   or ma["updated"] == mb["updated"] == today)):
             probs.append("Updated not bumped (%s -> %s)" % (mb["updated"], ma["updated"]))
         if CLAIM_RE.search(before) and not CLAIM_RE.search(after):
             probs.append("Core Claim dropped")
@@ -529,16 +538,21 @@ def record_run(root: Path, rec: dict, step: str, run: str, res) -> dict:
     if step == "replay":
         _write(root, rec["cid"], "results/replay-%s.md" % run, res)
         return {"stage": "reviewed", "packets": [str(emit(root, rec, "judge", run))]}
-    shape(valid_judge(res), "judge")
     need((cdir(root, rec["cid"]) / "results" / ("replay-%s.md" % run)).is_file(), "judge %s before its replay" % run)
+    try:
+        res = json.loads(res)
+    except ValueError:
+        res = {"malformed": res}
     _write(root, rec["cid"], "results/judge-%s.json" % run, json.dumps(res, ensure_ascii=False, indent=1) + "\n")
-    return {"stage": "reviewed", "judged": run}
+    answer = (cdir(root, rec["cid"]) / "results" / ("replay-%s.md" % run)).read_text(encoding="utf-8")
+    ok, why = kbe.judge_pass(res, answer, rec["validate"]["runs"][run]["forbidden"])
+    return {"stage": "reviewed", "judged": run, "counts_as": "PASS" if ok else "FAIL", "why": why}
 
 
 def cmd_record(root: Path, a) -> dict:
     rec = load_record(root, a.cid)
     need(a.step in ("conflict", "compile", "review", "replay", "judge"), "record step %r unknown" % a.step)
-    res = read_result(a.result, markdown=a.step == "replay")
+    res = read_result(a.result, markdown=a.step in ("replay", "judge"))  # judge: kept raw, malformed = FAIL
     if a.step not in ("replay", "judge"):
         _write(root, rec["cid"], "results/%s.json" % a.step, json.dumps(res, ensure_ascii=False, indent=1) + "\n")
     out = {"conflict": record_conflict, "compile": record_compile, "review": record_review}.get(a.step)
@@ -574,7 +588,10 @@ def overlay(root: Path, dest: Path, patch=None) -> Path:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
     if cases:
-        red = [dict(c, origin="redacted") if c.get("status") == "active" else c for c in cases]
+        red = [dict(c, origin="redacted") if c.get("status") == "active" else dict(c) for c in cases]
+        for c in red:
+            if c.get("kind") == "answer":  # answer gold never reaches a replay
+                c["expected"], c["forbidden"] = [], []
         p = dest / kb_config.rel(root, "regressions")
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("".join(json.dumps(c, ensure_ascii=False) + "\n" for c in red), encoding="utf-8")
@@ -614,14 +631,34 @@ def draft_case(root: Path, rec: dict) -> dict:
             "ledger_seq": None}
 
 
-def forbidden_hit(answer: str, forbidden: list) -> list:
-    low = answer.lower()
-    return [f for f in forbidden if f and f.lower() in low]
+forbidden_hit = kbe.forbidden_hit
+
+
+def bind_now(root: Path, rec: dict) -> dict:
+    """The validate binding: corpus seal without the target page (its own before/after hashes guard it)."""
+    return kbe.binding(root, rec["validate"]["case"], skip=(rec["compile"]["target"],))
+
+
+def stale_keys(root: Path, rec: dict) -> list:
+    return kbe.stale(rec["validate"].get("binding"), bind_now(root, rec))
+
+
+def reset_validate(root: Path, rec: dict) -> None:
+    for key in ("base_overlay", "patched_overlay"):
+        ov = rec["validate"].get(key)
+        if ov:
+            shutil.rmtree(Path(ov).parent, ignore_errors=True)
+    rec["stage"], rec["await"], rec["validate"], rec["terminal_row"] = "reviewed", "validate", {}, ""
 
 
 def cmd_validate(root: Path, a) -> dict:
     rec = load_record(root, a.cid)
-    expect(rec, ("reviewed",))
+    expect(rec, ("reviewed", "validated"))
+    if rec["stage"] == "validated":  # a validated verdict is only redone once it went stale
+        moved = stale_keys(root, rec)
+        need(moved, "%s is validated and fresh; nothing to redo" % rec["cid"])
+        reset_validate(root, rec)
+        save(root, rec)
     rel = rec["compile"]["target"]
     need((root / rel).is_file() and sha256((root / rel).read_bytes()) == rec["compile"]["before_sha256"],
          "drift: %s changed since compile (before_sha256)" % rel)
@@ -636,6 +673,7 @@ def cmd_validate(root: Path, a) -> dict:
         base, patched = overlay(root, tmp / "base"), overlay(root, tmp / "patched", (rel, after))
         v.update(base_overlay=str(base), patched_overlay=str(patched), det_rc=det_check(root, patched),
                  affected=[], case=case)
+        v["binding"] = bind_now(root, rec)
         if case["kind"] == "retrieval":
             gold = set(case["expected"])
             base_top, patched_top = rank(base, rec["q"]), rank(patched, rec["q"])
@@ -662,15 +700,24 @@ def cmd_validate(root: Path, a) -> dict:
         save(root, rec)
         return {"cid": rec["cid"], "stage": "reviewed", "det_rc": v["det_rc"],
                 "packets": [str(emit(root, rec, "replay", r)) for r in runs]}
+    moved = stale_keys(root, rec)
+    if moved:
+        reset_validate(root, rec)
+        save(root, rec)
+        raise Fail(1, "%s: stale replay results (%s changed since validate); run validate again"
+                   % (rec["cid"], "/".join(moved)))
     res_dir = cdir(root, rec["cid"]) / "results"
     missing = [r for r in v["runs"] if not (res_dir / ("judge-%s.json" % r)).is_file()]
     need(not missing, "%s: waiting on judge results for %s" % (rec["cid"], missing))
-    passed = {}
+    passed, why = {}, {}
     for r, spec in v["runs"].items():
-        judged = json.loads((res_dir / ("judge-%s.json" % r)).read_text(encoding="utf-8"))
+        try:
+            judged = json.loads((res_dir / ("judge-%s.json" % r)).read_text(encoding="utf-8"))
+        except ValueError:
+            judged = None
         answer = (res_dir / ("replay-%s.md" % r)).read_text(encoding="utf-8")
-        passed[r] = judged["verdict"] == "PASS" and not forbidden_hit(answer, spec["forbidden"])
-    v["passed"] = passed
+        passed[r], why[r] = kbe.judge_pass(judged, answer, spec["forbidden"])
+    v["passed"], v["judged"] = passed, why
     n_patched = sum(passed["patched-%d" % i] for i in range(1, PATCHED_RUNS + 1))
     checks = {"base FAIL": not passed["base"], "patched >=2/3": n_patched >= 2,
               "affected pass": all(passed["case-" + c] for c in v["affected"]),
@@ -716,6 +763,8 @@ def cmd_land(root: Path, a) -> dict:
     after = cdir(root, rec["cid"]) / "after.md"
     need(after.is_file() and sha256(after.read_bytes()) == rec["compile"]["after_sha256"],
          "drift: after.md changed since compile")
+    moved = stale_keys(root, rec)
+    need(not moved, "stale validation: %s changed since validate; run validate %s again" % ("/".join(moved), rec["cid"]), 1)
     meta = kblint.read_meta(root / rel)
     out = kbw_put(root, rec, "article", "--kind", "article", "--slug", "correction-%s" % rec["cid"].lower(),
                   "--type", meta["type"] or "article", "--supersedes", "wiki:" + Path(rel).stem,
@@ -765,6 +814,9 @@ def cmd_landed(root: Path, a) -> dict:
     if rec["stage"] == "landed" or done:
         return {"cid": rec["cid"], "stage": "landed", "case": rec["land"].get("case_id") or done[0]["id"], "appended": False}
     expect(rec, ("proposed",))
+    moved = stale_keys(root, rec)
+    need(not moved, "stale validation: %s changed since validate; unland nothing, rerun validate %s"
+         % ("/".join(moved), rec["cid"]), 1)
     row, rel = ledger_row(root, a.ledger_seq), rec["compile"]["target"]
     need(row.get("event") == "land" and row.get("id") == rec["land"].get("proposal")
          and row.get("origin") == "correction:" + rec["cid"],
@@ -790,11 +842,6 @@ def cmd_landed(root: Path, a) -> dict:
 
 # ---------- replay-all ----------
 
-def valid_judge(res) -> bool:
-    return (isinstance(res, dict) and res.get("verdict") in ("PASS", "FAIL") and isinstance(res.get("points"), list)
-            and all(isinstance(p, dict) and isinstance(p.get("met"), bool) for p in res["points"]))
-
-
 def cmd_replay_all(root: Path, a) -> dict:
     d = root / CORR / "_replay-all"
     if a.fresh:
@@ -807,16 +854,23 @@ def cmd_replay_all(root: Path, a) -> dict:
         ov = overlay(root, tmp / "live")
         d.mkdir(parents=True, exist_ok=True)
         man.write_text(json.dumps({"overlay": str(ov), "runs": {c["id"]: {
-            "q": c["q"], "points": c["expected"], "forbidden": c["forbidden"], "status": c["status"]} for c in cases}},
+            "q": c["q"], "points": c["expected"], "forbidden": c["forbidden"], "status": c["status"],
+            "binding": kbe.binding(root, c)} for c in cases}},
             ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     m = json.loads(man.read_text(encoding="utf-8"))
+    now = {c["id"]: c for c in active_cases(root)}
+    moved = sorted(cid for cid, run in m["runs"].items()
+                   if cid not in now or kbe.stale(run.get("binding"), kbe.binding(root, now[cid])))
+    need(not moved, "replay-all is stale for %s (corpus, case or tools changed); rerun with --fresh" % ", ".join(moved))
     pending, passed, failed = [], [], []
     for cid, run in m["runs"].items():
         ans, jf = d / "results" / ("replay-%s.md" % cid), d / "results" / ("judge-%s.json" % cid)
         if jf.is_file() and ans.is_file():
-            res = json.loads(jf.read_text(encoding="utf-8"))
-            need(valid_judge(res), "judge-%s.json does not match its shape (spec P3 §4)" % cid)
-            ok = res["verdict"] == "PASS" and not forbidden_hit(ans.read_text(encoding="utf-8"), run["forbidden"])
+            try:
+                res = json.loads(jf.read_text(encoding="utf-8"))
+            except ValueError:
+                res = None  # malformed counts as FAIL
+            ok = kbe.judge_pass(res, ans.read_text(encoding="utf-8"), run["forbidden"])[0]
             (passed if ok else failed).append(cid)
             continue
         pk = {"step": "replay", "cid": "replay-all", "run": cid, "q": run["q"], "overlay": m["overlay"]} if not ans.is_file() \

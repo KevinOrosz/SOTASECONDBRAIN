@@ -33,6 +33,8 @@ if [ $? -eq 0 ]; then pass "WP2: inbox files parse, known keys, agent folders, s
 if [ -f "$REG" ]; then
   OUT=$(python3 tools/kb-eval.py --regressions "$REG" 2>&1)
   if [ $? -eq 0 ]; then pass "regressions: $(echo "$OUT" | tail -1 | sed 's/^PASS  //')"; else echo "$OUT" | indent; fail "regressions"; fi
+  UNCHECKED=$(echo "$OUT" | tail -1 | grep -oE '[0-9]+ answer UNCHECKED' | grep -oE '^[0-9]+')
+  if [ "${UNCHECKED:-0}" -gt 0 ]; then warn "regressions: $UNCHECKED answer case(s) UNCHECKED (no fresh verdict; run bin/kb correct replay-all)"; fi
 else warn "regressions: $REG absent"; fi
 
 # 5. test suites

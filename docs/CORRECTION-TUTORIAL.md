@@ -33,7 +33,7 @@ bin/kb write land sam/2026-10-26-correction-c-0001 --endorsed-by sam
 The land rebuilds the index, runs every check, writes a ledger row, then calls `kb-correct landed`. That re-reads the ledger row, compares its hash with the page on disk, and appends exactly one row to `evals/regressions.jsonl` (`origin: correction:C-0001`, `landed_version`, `ledger_seq`).
 
 ```bash
-bin/kb eval --regressions evals/regressions.jsonl   # PASS  2 deterministic green, 0 answer deferred, 2 dormant   (exit 0)
+bin/kb eval --regressions evals/regressions.jsonl   # PASS  2 deterministic green, 0 answer fresh pass, 0 answer UNCHECKED, 2 dormant   (exit 0)
 ```
 
 **The discrimination proof.** Take the fix away and the case must fail:
@@ -47,3 +47,7 @@ bin/kb eval --regressions evals/regressions.jsonl
 Exit 1 shows the case catches the mistake it was written for. `unland` leaves the case in the file, so every later land fails until the proposal is landed again or the case is retired (`status: retired` with a `retired_reason`).
 
 Before closing a loop, `bin/kb correct replay-all` writes replay and judge packets for every answer case, dormant ones included. Fill them, rerun until no result is pending (exit 0 all pass, 1 a case fails, 2 still waiting).
+
+Judging is strict. A judge result is `{"verdict": "pass", "evidence": "<a span copied verbatim from the answer>", "points": [...]}`; `fail` and `unclear` are the other verdicts. Anything malformed, `unclear`, or without a span found in the answer counts as FAIL. Every verdict is bound to the wiki, the case and the tool source: change any of them and the verdict goes stale. A stale `validate` restarts (run it again), `land` exits 1, and `replay-all` asks for `--fresh`. `bin/kb eval --regressions` reports an answer case with no fresh verdict as `UNCHECKED` and `make verify` warns about it. That is honest, not a failure: rerun `replay-all`.
+
+Two corrections to the same page on the same day work: the second post-image keeps today's `Updated` date.

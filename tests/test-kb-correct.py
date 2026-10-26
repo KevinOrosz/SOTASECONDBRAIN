@@ -126,7 +126,7 @@ class Base(unittest.TestCase):
             self.assertEqual(set(judge), kbc.PACKETS["judge"])
             self.assertEqual(self.cli("record", "C-0001", "judge", "--run", run, "--result", self.fx(
                 {"points": [{"point": "tide pools shelter kelp", "met": v == "PASS", "quote": ""}],
-                 "verdict": v}))[0], 0)
+                 "verdict": v.lower(), "evidence": "Answer for %s." % run}))[0], 0)
 
 
 LONG = " ".join("Zebrafish evidence is recorded in this page body as plain prose sentence %d." % i for i in range(14))
@@ -299,11 +299,77 @@ class TestLand(Base):
         self.assertEqual(self.cli("replay-all")[0], 2)  # now waits on the judge
         self.assertEqual(set(json.loads((d / "packets" / "judge-r-0004.json").read_text(encoding="utf-8"))),
                          kbc.PACKETS["judge"])
-        (d / "results" / "judge-r-0004.json").write_text(json.dumps({"points": [], "verdict": "FAIL"}), encoding="utf-8")
+        (d / "results" / "judge-r-0004.json").write_text(json.dumps({"points": [], "verdict": "fail", "evidence": "An answer."}), encoding="utf-8")
         rc, out = self.cli("replay-all")
         self.assertEqual(rc, 1, out)
         self.assertIn("r-0004", out["error"])
         self.assertEqual(self.cli("replay-all", "--fresh")[0], 2)  # --fresh starts over
+
+
+    def test_32_land_refuses_a_stale_validation_then_revalidate_lands(self):
+        self.validated()
+        third = self.root / "KB/wiki/beta/third.md"
+        third.write_text(third.read_text(encoding="utf-8") + "\nAnother page moved.\n", encoding="utf-8")
+        rc, out = self.cli("land", "C-0001")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("stale validation: corpus", out["error"])
+        self.assertEqual(self.rec()["stage"], "validated")
+        rc, out = self.cli("validate", "C-0001")  # stale -> redone on the current corpus
+        self.assertEqual((rc, out.get("stage")), (0, "validated"), out)
+        self.assertEqual(self.cli("validate", "C-0001")[0], 2)  # fresh: nothing to redo
+        with mock.patch.object(kbc.kbe, "tools_hash", lambda root: "changed tool source"):
+            rc, out = self.cli("land", "C-0001")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("tools", out["error"])
+        self.assertEqual(self.cli("land", "C-0001")[0], 0)
+
+    def test_33_landed_hook_rejects_a_stale_validation(self):
+        pid = self.proposed()
+        with mock.patch.object(self.kbw, "HOOK", self.tmp / "absent" / "kb-correct.py"):
+            rc, res = self.kbw_cli("land", pid, "--endorsed-by", "owner")
+        self.assertEqual(rc, 0, res)
+        n = len(self.cases())
+        with mock.patch.object(kbc.kbe, "tools_hash", lambda root: "changed tool source"):
+            rc, out = self.cli("landed", "C-0001", "--ledger-seq", str(res["ledger_seq"]))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("stale validation", out["error"])
+        self.assertEqual((len(self.cases()), self.rec()["stage"]), (n, "proposed"))
+
+    def test_34_two_corrections_open_and_land_on_the_same_day(self):
+        today = kbc.date.today().isoformat()
+        first = FIRST_LONG.replace("**Updated:** 2026-01-05", "**Updated:** " + today)
+        self.to_reviewed(self.open_retrieval, "KB/wiki/alpha/first.md", first)
+        self.assertEqual(self.cli("validate", "C-0001")[0], 0)
+        pid1 = self.cli("land", "C-0001")[1]["proposal"]
+        rc, res1 = self.kbw_cli("land", pid1, "--endorsed-by", "owner")
+        self.assertEqual((rc, res1.get("hook")), (0, "ok"), res1)
+        page = self.root / "KB/wiki/alpha/first.md"
+        split = {"points": ["plain prose sentence lives in first"], "terms": ["plain", "prose", "sentence"]}
+        rc, out = self.cli("open", "--q", "plain prose sentence", "--owner-says", "Also in the first page.",
+                           "--points-file", self.fx(split))
+        self.assertEqual((rc, out.get("cid")), (0, "C-0002"), out)
+        rc, out = self.cli("diagnose", "C-0002")
+        self.assertEqual((rc, out.get("label")), (0, "reachable-unretrieved"), out)
+        if self.rec("C-0002")["await"] == "conflict":
+            self.cli("record", "C-0002", "conflict", "--result", self.fx({"conflict": False, "primary": [], "reason": ""}))
+        second = page.read_text(encoding="utf-8").replace("zebrafish carry it.", "zebrafish carry it; plain prose sentence.")
+        self.assertIn("**Updated:** " + today, second)  # same day: Updated cannot move forward
+        rc, out = self.cli("record", "C-0002", "compile", "--result", self.fx({"files": {"KB/wiki/alpha/first.md": second}}))
+        self.assertEqual(rc, 0, out)
+        self.cli("record", "C-0002", "review", "--result", self.fx({"verdict": "APPROVE", "findings": []}))
+        rc, out = self.cli("validate", "C-0002")
+        self.assertEqual((rc, out.get("stage")), (0, "validated"), out)
+        rc, out = self.cli("land", "C-0002")
+        self.assertEqual(rc, 0, out)
+        self.assertNotEqual(out["proposal"], pid1)
+        rc, res2 = self.kbw_cli("land", out["proposal"], "--endorsed-by", "owner")
+        self.assertEqual((rc, res2.get("hook")), (0, "ok"), res2)
+        mine = [c for c in self.cases() if c["origin"] in ("correction:C-0001", "correction:C-0002")
+                and c["landed"] == today]
+        self.assertEqual([c["origin"] for c in mine], ["correction:C-0001", "correction:C-0002"])
+        self.assertEqual(len({c["id"] for c in self.cases()}), len(self.cases()))
+        self.assertEqual([self.rec(c)["stage"] for c in ("C-0001", "C-0002")], ["landed", "landed"])
+        self.assertEqual(self.regressions_rc(), 0)
 
 
 class TestCorrect(Base):
@@ -428,6 +494,61 @@ class TestCorrect(Base):
         self.assertFalse(overlays.exists())  # terminal transitions remove the overlays
         self.assertEqual(kb_testkit.tree_digest(self.root / "KB/wiki"), wiki)
         self.assertEqual(kb_testkit.tree_digest(self.root / "KB/RAW"), raw)
+
+    def test_40_replay_packets_are_blind_bytes(self):
+        self.to_reviewed(self.open_raw, "KB/wiki/alpha/second.md", SECOND_PATCHED)
+        rows = [json.loads(x) for x in (self.root / "evals/regressions.jsonl").read_text().splitlines()]
+        rows[3]["status"] = "active"  # an answer case whose gold must stay out of the overlay
+        (self.root / "evals/regressions.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+        self.assertEqual(self.cli("validate", "C-0001")[0], 0)
+        pdir = self.root / kbc.CORR / "C-0001" / "packets"
+        replays = sorted(pdir.glob("replay-*.json"))
+        self.assertEqual(len(replays), 4)
+        for p in replays:
+            raw = p.read_bytes().decode("utf-8").lower()
+            for secret in (OWNER_SAYS.lower(), "tide pools shelter kelp", "deep trench", "verdict", "approve",
+                           "literal and direct"):
+                self.assertNotIn(secret, raw, (p.name, secret))
+        ov = Path(json.loads(replays[0].read_text())["overlay"])
+        self.assertNotIn("literal and direct", (ov / "evals/regressions.jsonl").read_text(encoding="utf-8"))
+        self.cli("record", "C-0001", "replay", "--run", "base", "--result", self.fx("Some answer.\n", "md"))
+        judge = (pdir / "judge-base.json").read_bytes().decode("utf-8")
+        self.assertNotIn(OWNER_SAYS, judge)  # the judge packet is separate: points and answer only
+        self.assertNotIn("diff", json.loads(judge))
+
+    def test_41_malformed_unclear_or_uncited_judging_counts_as_fail(self):
+        self.to_reviewed(self.open_raw, "KB/wiki/alpha/second.md", SECOND_PATCHED)
+        self.cli("validate", "C-0001")
+        results = {"base": {"verdict": "fail", "evidence": "Answer for base."},
+                   "patched-1": {"verdict": "unclear", "evidence": "Answer for patched-1."},
+                   "patched-2": {"verdict": "PASS", "evidence": "Answer for patched-2."},
+                   "patched-3": {"verdict": "pass", "evidence": "a span the answer never says"}}
+        for run, res in results.items():
+            self.cli("record", "C-0001", "replay", "--run", run, "--result", self.fx("Answer for %s.\n" % run, "md"))
+            rc, out = self.cli("record", "C-0001", "judge", "--run", run, "--result", self.fx(res))
+            self.assertEqual((rc, out["counts_as"]), (0, "FAIL"), out)
+        rc, out = self.cli("record", "C-0001", "judge", "--run", "patched-1", "--result", self.fx("not json at all", "md"))
+        self.assertEqual((rc, out["counts_as"]), (0, "FAIL"), out)
+        rc, out = self.cli("validate", "C-0001")
+        self.assertEqual(rc, 1, out)
+        r = self.rec()
+        self.assertEqual(r["stage"], "failed")
+        self.assertFalse(any(r["validate"]["passed"].values()))
+        self.assertIn("malformed", r["validate"]["judged"]["patched-1"])
+
+    def test_42_judging_after_the_corpus_moved_is_stale_and_restarts(self):
+        self.to_reviewed(self.open_raw, "KB/wiki/alpha/second.md", SECOND_PATCHED)
+        self.cli("validate", "C-0001")
+        self.replay_and_judge()
+        third = self.root / "KB/wiki/beta/third.md"
+        third.write_text(third.read_text(encoding="utf-8") + "\nMoved mid-validation.\n", encoding="utf-8")
+        rc, out = self.cli("validate", "C-0001")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("stale", out["error"])
+        r = self.rec()
+        self.assertEqual((r["stage"], r["await"], r["validate"]), ("reviewed", "validate", {}))
+        rc, out = self.cli("validate", "C-0001")
+        self.assertEqual((rc, len(out["packets"])), (0, 4), out)
         self.assertEqual(sorted(p.name for p in (self.root / "KB" / "inbox").iterdir()), ["_corrections"])
 
     def test_13b_retrieval_flow_flips_via_rank_without_replay(self):

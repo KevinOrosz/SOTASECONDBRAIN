@@ -24,6 +24,7 @@ Read-only. Stdlib only. Python 3.9.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
@@ -44,6 +45,91 @@ CASE_OPTIONAL = {"retired_reason": _S}
 KINDS, STATUSES = ("answer", "retrieval", "artifact"), ("active", "dormant", "retired")
 GOLD_SOURCES = ("owner-verbatim", "rules", "evidence-scan")
 ID_RE = re.compile(r"^r-(\d{4,})$")
+
+# Evaluation honesty (spec §1.5). A judge verdict is one of VERDICTS with a cited evidence span; anything
+# else counts as FAIL. Every stored verdict is bound to BIND (corpus seal, case, tool source) and is stale,
+# so never counted, once any of the three moves.
+VERDICTS = ("pass", "fail", "unclear")
+BIND = ("corpus", "case", "tools")
+CASE_BIND_KEYS = ("kind", "q", "expected", "forbidden", "targets", "ranker", "k")
+REPLAY_ALL = "KB/inbox/_corrections/_replay-all"
+
+
+def _sha(data) -> str:
+    return hashlib.sha256(data if isinstance(data, bytes) else data.encode("utf-8")).hexdigest()
+
+
+def corpus_seal(root: Path, skip=()) -> str:
+    """sha256 over every KB/wiki/**/*.md (path + bytes). Generated _index.md pages and `skip` stay out."""
+    wiki = root / "KB" / "wiki"
+    rows = ["%s %s" % (p.relative_to(root).as_posix(), _sha(p.read_bytes())) for p in sorted(wiki.rglob("*.md"))
+            if p.name != "_index.md" and p.relative_to(root).as_posix() not in skip]
+    return _sha("\n".join(rows))
+
+
+def case_hash(case: dict) -> str:
+    return _sha(json.dumps({k: case.get(k) for k in CASE_BIND_KEYS}, sort_keys=True, ensure_ascii=False))
+
+
+def tools_hash(root: Path) -> str:
+    d = root / "tools" if (root / "tools").is_dir() else Path(__file__).resolve().parent
+    return _sha("\n".join("%s %s" % (p.name, _sha(p.read_bytes())) for p in sorted(d.glob("*.py"))))
+
+
+def binding(root: Path, case: dict, skip=()) -> dict:
+    return {"corpus": corpus_seal(root, skip), "case": case_hash(case), "tools": tools_hash(root)}
+
+
+def stale(bound, now: dict) -> list:
+    """The BIND keys whose hash moved; a missing or malformed binding is stale on every key."""
+    if not isinstance(bound, dict):
+        return list(BIND)
+    return [k for k in BIND if bound.get(k) != now[k]]
+
+
+def forbidden_hit(answer: str, forbidden) -> list:
+    low = answer.lower()
+    return [f for f in forbidden if f and f.lower() in low]
+
+
+def judge_pass(res, answer: str, forbidden=()) -> tuple:
+    """(passed, reason). Only a schema-valid "pass" citing a span found verbatim in the answer passes."""
+    if not isinstance(res, dict) or res.get("verdict") not in VERDICTS:
+        return False, "malformed: verdict not one of %s" % "/".join(VERDICTS)
+    ev = res.get("evidence")
+    if not isinstance(ev, str) or not ev.strip() or ev.strip() not in answer:
+        return False, "malformed: evidence span missing or not in the answer"
+    pts = res.get("points", [])
+    if not (isinstance(pts, list) and all(isinstance(p, dict) and isinstance(p.get("met"), bool) for p in pts)):
+        return False, "malformed: points"
+    if res["verdict"] != "pass":
+        return False, res["verdict"]
+    if not all(p["met"] for p in pts):
+        return False, "pass with an unmet point"
+    hit = forbidden_hit(answer, forbidden)
+    return (False, "forbidden literal %s" % hit) if hit else (True, "pass")
+
+
+def fresh_verdicts(root: Path, cases: list) -> dict:
+    """case id -> (passed, reason) for answer cases with a fresh replay-all verdict; stale ones are left out."""
+    d = root / REPLAY_ALL
+    try:
+        man = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for c in cases:
+        run = man.get("runs", {}).get(c["id"])
+        ans, jf = d / "results" / ("replay-%s.md" % c["id"]), d / "results" / ("judge-%s.json" % c["id"])
+        if not run or not ans.is_file() or not jf.is_file() or stale(run.get("binding"), binding(root, c)):
+            continue
+        answer = ans.read_text(encoding="utf-8")
+        try:
+            res = json.loads(jf.read_text(encoding="utf-8"))
+        except ValueError:
+            res = None
+        out[c["id"]] = judge_pass(res, answer, c["forbidden"])
+    return out
 
 
 def load(name: str):
@@ -170,9 +256,10 @@ def _case_artifact(root, c, ctx):
 
 
 def regressions(root: Path, path: Path):
-    """Validate then run every deterministic case. Dormant, retired and answer cases are counted, never run."""
-    res = {"cases": 0, "checked": 0, "passed": 0, "failed": 0, "deferred_answer": 0, "dormant": 0,
-           "retired": 0, "invalid": 0, "violations": [], "failures": []}
+    """Validate then run every deterministic case. Dormant and retired cases are counted, never run. An active
+    answer case counts from its fresh replay-all verdict; with none it is UNCHECKED, never a pass."""
+    res = {"cases": 0, "checked": 0, "passed": 0, "failed": 0, "answer_passed": 0, "unchecked": 0,
+           "unchecked_ids": [], "dormant": 0, "retired": 0, "invalid": 0, "violations": [], "failures": []}
     cases = []
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if line.strip():
@@ -186,13 +273,24 @@ def regressions(root: Path, path: Path):
     if res["invalid"]:
         return res
     ctx = {}
+    verdicts = fresh_verdicts(root, [c for c in cases if c["status"] == "active" and c["kind"] == "answer"])
     for c in cases:
         if c["status"] == "dormant":
             res["dormant"] += 1
         elif c["status"] == "retired":
             res["retired"] += 1
         elif c["kind"] == "answer":
-            res["deferred_answer"] += 1
+            if c["id"] not in verdicts:
+                res["unchecked"] += 1
+                res["unchecked_ids"].append(c["id"])
+                continue
+            ok, why = verdicts[c["id"]]
+            res["checked"] += 1
+            if ok:
+                res["answer_passed"] += 1
+            else:
+                res["failed"] += 1
+                res["failures"].append({"id": c["id"], "origin": c["origin"], "problems": ["judge: " + why]})
         else:
             res["checked"] += 1
             try:
@@ -267,11 +365,13 @@ def main_regressions(a, root):
         print("INVALID  %s" % v)
     for f in reg["failures"]:
         print("FAIL  %s (%s): %s" % (f["id"], f["origin"], "; ".join(f["problems"])))
+    for cid in reg["unchecked_ids"]:
+        print("UNCHECKED  %s: answer case with no fresh verdict (run kb-correct replay-all)" % cid)
     if retrieval is not None:
         print("retrieval combined %.3f (old %.3f)" % (retrieval["new"]["combined"], retrieval["old"]["combined"]))
-    print("%s  %d deterministic green, %d answer deferred, %d dormant (%d failed, %d invalid, %d retired)"
-          % ("PASS" if rc == 0 else "FAIL", reg["passed"], reg["deferred_answer"], reg["dormant"],
-             reg["failed"], reg["invalid"], reg["retired"]))
+    print("%s  %d deterministic green, %d answer fresh pass, %d answer UNCHECKED, %d dormant (%d failed, %d invalid, "
+          "%d retired)" % ("PASS" if rc == 0 else "FAIL", reg["passed"], reg["answer_passed"], reg["unchecked"],
+                           reg["dormant"], reg["failed"], reg["invalid"], reg["retired"]))
     return rc
 
 

@@ -70,7 +70,7 @@ class Regressions(Base):
     def test_01_fixture_suite_is_green_and_counts_skips(self):
         rc, out = self.ev()
         self.assertEqual(rc, 0, out)
-        self.assertIn("3 deterministic green, 0 answer deferred, 1 dormant", out)
+        self.assertIn("3 deterministic green, 0 answer fresh pass, 0 answer UNCHECKED, 1 dormant", out)
 
     def test_02_retrieval_gold_missing_from_topk_fails(self):
         rows = self.rows()
@@ -99,13 +99,53 @@ class Regressions(Base):
         self.assertEqual(rc, 1)
         self.assertEqual(json.loads(res)["regressions"]["failed"], 1)
 
-    def test_05_answer_cases_never_run(self):
+    def test_05_answer_case_without_a_verdict_is_unchecked_not_passed(self):
         rows = self.rows()
         rows[3]["status"] = "active"
         self.write(rows)
         rc, out = self.ev()
         self.assertEqual(rc, 0, out)
-        self.assertIn("1 answer deferred, 0 dormant", out)
+        self.assertIn("0 answer fresh pass, 1 answer UNCHECKED, 0 dormant", out)
+
+    def verdict(self, case, judge, answer="The voice is literal and direct.\n"):
+        """A replay-all result for one answer case, bound to the corpus, case and tools as they are now."""
+        d = self.root / kbe.REPLAY_ALL
+        (d / "results").mkdir(parents=True, exist_ok=True)
+        (d / "manifest.json").write_text(json.dumps({"overlay": "", "runs": {case["id"]: {
+            "q": case["q"], "points": case["expected"], "forbidden": case["forbidden"], "status": case["status"],
+            "binding": kbe.binding(self.root, case)}}}), encoding="utf-8")
+        (d / "results" / ("replay-%s.md" % case["id"])).write_text(answer, encoding="utf-8")
+        (d / "results" / ("judge-%s.json" % case["id"])).write_text(
+            judge if isinstance(judge, str) else json.dumps(judge), encoding="utf-8")
+
+    def test_05b_fresh_verdicts_count_and_stale_ones_are_unchecked(self):
+        rows = self.rows()
+        rows[3]["status"] = "active"
+        self.write(rows)
+        self.verdict(rows[3], {"verdict": "pass", "evidence": "literal and direct", "points": []})
+        rc, out = self.ev()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("1 answer fresh pass, 0 answer UNCHECKED", out)
+        page = self.root / "KB/wiki/beta/third.md"
+        page.write_text(page.read_text(encoding="utf-8") + "\nMoved.\n", encoding="utf-8")
+        rc, out = self.ev()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("UNCHECKED  r-0004", out)
+        self.assertIn("0 answer fresh pass, 1 answer UNCHECKED", out)
+
+    def test_05c_malformed_unclear_or_uncited_verdicts_fail(self):
+        rows = self.rows()
+        rows[3]["status"] = "active"
+        self.write(rows)
+        for judge in ("{not json", {"verdict": "PASS", "evidence": "literal and direct"},
+                      {"verdict": "unclear", "evidence": "literal and direct"}, {"verdict": "pass"},
+                      {"verdict": "pass", "evidence": "never said"},
+                      {"verdict": "pass", "evidence": "literal", "points": [{"met": False}]}):
+            with self.subTest(judge=judge):
+                self.verdict(rows[3], judge)
+                rc, res = self.ev("--json")
+                reg = json.loads(res)["regressions"]
+                self.assertEqual((rc, reg["failed"], reg["answer_passed"]), (1, 1, 0), reg)
 
     def test_06_invariant_violations_exit_1(self):
         mutations = {
