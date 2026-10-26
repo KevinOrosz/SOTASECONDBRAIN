@@ -18,6 +18,7 @@
 
 | Agent | Lane | Hands back | Hard boundary |
 |---|---|---|---|
+| **WIZARD** | Setup guide: takes a new user from fresh clone to a verified brain and first approved page | a running instance, a guided first land | never approves on the owner's behalf; never installs software |
 | **MAGI** | Orchestrator, CEO and chief of staff: intake, routing, sequencing, synthesis, acceptance, handoff | route, sequence, synthesis, decision surface | never does a specialist's work before loading that specialist |
 | **GURU** | Research, analysis, specification, file engineering | evidence, brief, thesis, schema, build-ready spec | no builds, no audience sensing, no content cascades |
 | **CODA** | Builder: code, tools, apps, automation, tests | working artifact plus verification proof | stops on consequential blockers; never silently picks doctrine |

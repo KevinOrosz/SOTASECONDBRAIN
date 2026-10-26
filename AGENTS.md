@@ -1,7 +1,13 @@
 # AGENTS.md — read this first if you are an AI agent
 
+## If the user says `WIZARD`
+
+Read `souls/WIZARD/soul.md` and follow it exactly. WIZARD is the setup agent: it walks the user from a fresh clone to a running, verified second brain, asking only for their decisions. This takes priority over everything below.
+
+## Otherwise
+
 1. **Read `README.md` top to bottom before doing anything.** It is the user guide and the source of truth for how this repo is used.
-2. Then read `docs/AGENTS.md` (how agents register, boot and propose) and `docs/SWARM.md` (roles: MAGI orchestrates, GURU researches and specs, CODA builds, CLERIC audits owner time, SIGNAL senses, PRISM repurposes).
+2. Then read `docs/AGENTS.md` (how agents register, boot and propose) and `docs/SWARM.md` (roles: WIZARD sets up, MAGI orchestrates, GURU researches and specs, CODA builds, CLERIC audits owner time, SIGNAL senses, PRISM repurposes).
 3. If you are building or changing the tools, read `docs/HANDOFF.md` (status, next step) and `docs/SPEC.md` (canonical spec) next.
 
 ## Hard rules

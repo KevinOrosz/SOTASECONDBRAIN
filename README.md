@@ -1,5 +1,14 @@
 # SOTASECONDBRAIN
 
+> [!TIP]
+> **Fastest start: let the WIZARD set it up for you.**
+> 1. Clone this repo and open the folder in any AI agent tool (Claude Code, Codex, Cursor, or another).
+> 2. Type one word: **`WIZARD`**
+>
+> It checks your computer, sets up your brain, runs the health check, and walks you through your first question and your first approved page. You just answer a few questions. ([What WIZARD does](souls/WIZARD/soul.md))
+>
+> No agent tool? Follow the [User guide](#user-guide) below. It's the same steps by hand.
+
 **Start here.** This page is the user guide, for people and AI agents alike. Read it top to bottom once; everything else in the repo is reference.
 
 **In one sentence:** a knowledge base made of plain Markdown files, where anyone (including AI agents) can *suggest* changes, only one person (the **owner**) can *approve* them, every change is logged and undoable, and every fixed mistake gets a test so it can never come back.
