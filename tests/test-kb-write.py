@@ -18,6 +18,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -422,10 +423,18 @@ class Land(WriteCase):
     def test_p2s2_08_correction_land_records_hook_skipped(self):
         rc, out = self.article("--origin", "correction:C-0001")
         self.assertEqual(rc, 0, out)
-        self.assertFalse((self.root / "tools" / "kb-correct.py").exists())
-        rc, res = self.land(out["id"])
+        with mock.patch.object(kbw, "HOOK", self.tmp / "absent" / "kb-correct.py"):
+            rc, res = self.land(out["id"])
         self.assertEqual(rc, 0, res)
         self.assertTrue(self.ledger()[-1].get("hook_skipped"), self.ledger()[-1])
+
+    def test_p2s2_08b_correction_land_stands_when_the_hook_fails(self):
+        rc, out = self.article("--origin", "correction:C-0001")  # C-0001 has no record: landed exits nonzero
+        self.assertEqual(rc, 0, out)
+        rc, res = self.land(out["id"])
+        self.assertEqual(rc, 0, res)
+        self.assertNotIn("hook_skipped", self.ledger()[-1])
+        self.assertTrue(any("kb-correct.py landed C-0001" in w for w in res.get("warnings", [])), res)
 
     def test_config_owner_and_agents_are_instance_settings(self):
         (self.root / "KB" / "kb.json").write_text(json.dumps({"owner": "ada", "agents": ["SCOUT"]}), encoding="utf-8")
