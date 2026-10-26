@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup help
+    url: https://github.com/KevinOrosz/SOTASECONDBRAIN#readme
+    about: Open the repo in any AI agent tool and type WIZARD, or follow the User guide in the README.

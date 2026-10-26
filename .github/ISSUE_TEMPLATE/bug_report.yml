@@ -1,0 +1,24 @@
+name: Bug report
+description: Something broke or behaved unexpectedly
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you ran, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output of `make verify`
+      description: Paste the full output. It names the failing check.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "macOS 15, Python 3.12, agent tool if any"
+    validations:
+      required: true

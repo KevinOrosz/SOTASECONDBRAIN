@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.sh text eol=lf
+bin/kb text eol=lf
+*.png binary
+*.jpg binary

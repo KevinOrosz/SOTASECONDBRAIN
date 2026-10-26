@@ -34,5 +34,6 @@ usage: bin/kb <command> [args]
 Add --help after any command for its options.
 TXT
     ;;
+  version|--version|-V) cat "$HERE/VERSION" ;;
   *) echo "kb: unknown command '$cmd' (try bin/kb help)" >&2; exit 1 ;;
 esac

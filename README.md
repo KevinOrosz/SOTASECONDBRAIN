@@ -1,5 +1,11 @@
 # SOTASECONDBRAIN
 
+[![CI](https://github.com/KevinOrosz/SOTASECONDBRAIN/actions/workflows/ci.yml/badge.svg)](https://github.com/KevinOrosz/SOTASECONDBRAIN/actions/workflows/ci.yml)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)
+![No network, no API keys](https://img.shields.io/badge/network-none-brightgreen)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+
 > [!TIP]
 > **Fastest start: let the WIZARD set it up for you.**
 > 1. Clone this repo and open the folder in any AI agent tool (Claude Code, Codex, Cursor, or another).
@@ -123,6 +129,13 @@ git pull       # get updates to the tools
 | A land exits with code 3 | A safety check failed and the change was rolled back. Nothing broke. Read the message. |
 
 ---
+
+## Contributing, security, support
+
+- **Contributing:** see [CONTRIBUTING.md](CONTRIBUTING.md). Run `make test` and `make verify` before a pull request.
+- **Security:** see [SECURITY.md](SECURITY.md). Report privately, not in a public issue.
+- **Help:** type `WIZARD` in your agent tool, run `make help`, or open an issue with the bug template.
+- **Changes:** see [CHANGELOG.md](CHANGELOG.md).
 
 ## Reference
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 — 2026-10-26
+
+- WIZARD setup agent: open the repo in any AI agent tool and type `WIZARD` (`souls/WIZARD/soul.md`).
+- README opens with the user guide and the WIZARD tip; root `AGENTS.md` and `CLAUDE.md` route agents to it.
+- GitHub CI: tests, verify and sandbox on Ubuntu and macOS, Python 3.9 and 3.12.
+- Community files: CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, issue and PR templates, CODEOWNERS.
+- Quality of life: grouped `make help`, `bin/kb version`, `.editorconfig`, `.gitattributes`, README badges.
+
 ## 0.2.0 — 2026-10-26
 
 - `make status` no longer reports FAIL on a fresh install: the doctor records its link baseline on first run.
