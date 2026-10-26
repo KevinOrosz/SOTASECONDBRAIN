@@ -251,6 +251,9 @@ def main(argv):
     if as_json:
         print(json.dumps({
             "query": query, "terms": terms, "scorer": "keyword",
+            "retrieval": {"ranker": "keyword", "tool": "kb-query.py", "k": k,
+                          "version": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12],
+                          "index_inputs_hash": index.get("inputs_hash", "")},
             "total_matched": len(hits), "corpus": index.get("article_count", len(articles)),
             "stale": note, "results": hits,
         }, ensure_ascii=False, indent=1))
@@ -258,7 +261,7 @@ def main(argv):
 
     if note:
         print(f"  ! {note}", file=sys.stderr)
-    print(f'=== KB-QUERY: "{query}" · scorer=keyword · terms={terms} · '
+    print(f'=== KB-QUERY: "{query}" · scorer=keyword k={k} · terms={terms} · '
           f'{len(hits)} of {index.get("article_count", len(articles))} ===')
     if not hits:
         print("  no matches — loosen the query, or the concept may be a gap (propose a gap: bin/kb write put --kind gap).")

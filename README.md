@@ -143,7 +143,7 @@ git pull       # get updates to the tools
 
 - **Your brain** (created by `bootstrap.sh`, never uploaded to git): `KB/wiki/` pages, `KB/RAW/` sources, `KB/inbox/` proposals plus the ledger, `KB/kb.json` settings, `evals/` regression tests.
 - **The tools:** `bin/kb` (one command for everything), `make` shortcuts, `tools/` (plain Python, standard library only).
-- **The docs:** `docs/AGENTS.md` (how agents work here), `docs/SWARM.md` (the multi-agent doctrine), `docs/ARCHITECTURE.md` (how the pieces connect), `docs/CORRECTION-TUTORIAL.md`, `docs/SPEC.md` (the full build spec), `docs/HANDOFF.md` (build status).
+- **The docs:** `docs/AGENTS.md` (how agents work here), `docs/SWARM.md` (the multi-agent doctrine), `docs/ARCHITECTURE.md` (how the pieces connect), `docs/CORRECTION-TUTORIAL.md`, `docs/SPEC.md` (the full build spec), `docs/TRUST.md` (trust boundaries and threat model), `docs/HANDOFF.md` (build status).
 
 ### Concepts (one line each)
 

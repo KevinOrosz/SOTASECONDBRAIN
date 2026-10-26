@@ -17,6 +17,14 @@ case $RC in 0) pass "kb-graph: matches wiki content hashes" ;; 2) echo "$OUT" | 
 OUT=$(python3 tools/kb-eval.py --check 2>&1)
 if [ $? -eq 0 ]; then pass "retrieval eval: $(echo "$OUT" | tail -1)"; else echo "$OUT" | indent; fail "retrieval eval regressed"; fi
 
+# 1b. provenance: raw source hashes, index/graph built from this wiki, derived caches fresh
+OUT=$(python3 tools/kb-provenance.py --check 2>&1); RC=$?
+case $RC in
+  0) pass "provenance: sources hashed + present, index/graph/caches built from the current wiki" ;;
+  2) echo "$OUT" | grep -v '^PASS' | indent; warn "provenance: stale or legacy derived output (fix commands above)" ;;
+  *) echo "$OUT" | grep -v '^PASS' | indent; fail "provenance: missing/drifted source or corrupt index" ;;
+esac
+
 # 2. header contract
 OUT=$(python3 tools/kb-lint.py 2>&1); RC=$?
 case $RC in 0) pass "kb-lint: header contract clean" ;; 2) pass "kb-lint: 0 FAIL, warnings: $(echo "$OUT" | grep -oE 'WARN [0-9]+' | head -1)" ;; *) echo "$OUT" | indent; fail "kb-lint: header contract" ;; esac
