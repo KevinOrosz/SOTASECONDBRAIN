@@ -1,0 +1,7 @@
+# your instance (created by bootstrap.sh) stays out of the package history
+/KB/
+/evals/
+/agents/
+__pycache__/
+*.pyc
+.DS_Store

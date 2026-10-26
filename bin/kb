@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# kb — one entry point for the second-brain loop tools. Run `bin/kb help`.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$HERE"
+T="$HERE/tools"
+cmd="${1:-help}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+  lint)     exec python3 "$T/kb-lint.py" "$@" ;;
+  write)    exec python3 "$T/kb-write.py" "$@" ;;
+  eval)     exec python3 "$T/kb-eval.py" "$@" ;;
+  index)    python3 "$T/kb-index.py" "$@" && exec python3 "$T/kb-graph.py" ;;
+  graph)    exec python3 "$T/kb-graph.py" "$@" ;;
+  query)    exec python3 "$T/kb-query.py" "$@" ;;
+  search)   exec python3 "$T/kb-graph-query.py" search "$@" ;;
+  ask)      exec python3 "$T/kb-graph-query.py" "$@" ;;
+  autolink) exec python3 "$T/kb-autolink.py" "$@" ;;
+  doctor)   exec python3 "$T/brain-doctor.py" "$@" ;;
+  verify)   exec bash "$HERE/scripts/verify.sh" "$@" ;;
+  test)     rc=0; for t in "$HERE"/tests/test-kb-*.py; do python3 "$t" >/dev/null 2>&1 && echo "PASS  $(basename "$t")" || { echo "FAIL  $(basename "$t")"; rc=1; }; done; exit $rc ;;
+  help|-h|--help)
+    cat <<'TXT'
+usage: bin/kb <command> [args]
+  lint      check every wiki page header (kb-lint)        index   rebuild search index + graph
+  write     inbox proposals, land, unland (kb-write)       graph   rebuild or --check the graph
+  eval      retrieval eval / --regressions FILE            query   keyword search
+  search    hybrid search over page bodies                 ask     graph verbs: connect|neighbors|provenance|themes
+  doctor    structural health report                       autolink  report unlinked mentions (read-only)
+  verify    full health check                              test    run every test suite
+Add --help after any command for its options.
+TXT
+    ;;
+  *) echo "kb: unknown command '$cmd' (try bin/kb help)" >&2; exit 1 ;;
+esac

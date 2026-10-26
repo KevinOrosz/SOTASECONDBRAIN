@@ -1,0 +1,6 @@
+{
+ "note": "hand-labeled questions: write the gold page before running a ranker",
+ "questions": [
+  {"id": 1, "shape": "lookup", "q": "welcome inbox reviewed page", "gold": ["welcome"]}
+ ]
+}
