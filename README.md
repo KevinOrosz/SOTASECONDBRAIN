@@ -72,6 +72,8 @@ It lists the pages that answer it best. Open the search page at `KB/output/kb-se
 
 An agent (or a person) writes a proposal into the inbox. It never edits the wiki directly.
 
+First write the page as a Markdown file, for example `draft.md`: a `# Title` line, a `## Core Claim` section with one or two sentences, then `## Evidence`. It needs **at least 100 words** of body to be approved. Then propose it:
+
 ```bash
 bin/kb write put --agent GURU --kind article --slug mulching --category gardening \
   --type article --confidence moderate --source-ref raw:soil-notes.md --body-file draft.md
@@ -108,6 +110,7 @@ git pull       # get updates to the tools
 | `RESULT: FAIL` from `make verify` | Read the `[FAIL]` line above it. It names the file and the fix. |
 | `--endorsed-by ... is required` | Only the owner approves. Use the name you gave `bootstrap.sh`. |
 | `agent ... is not a registered agent` | Add the agent's name to `agents` in `KB/kb.json`. |
+| `land needs at least 100` body words | The page is too short. Add evidence to the draft and propose it again. |
 | A land exits with code 3 | A safety check failed and the change was rolled back. Nothing broke. Read the message. |
 
 ---
