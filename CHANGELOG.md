@@ -18,6 +18,23 @@ Hardening PR1: recovery.
 - Migration: none needed. Instances without `_objects/` keep working; `unland` of a land made before
   this release falls back to Git history as before.
 
+Hardening PR2: evaluation honesty.
+
+- Blind replay. Replay packets carry only the question and an overlay path; tests check the packet bytes
+  hold no gold point, forbidden literal, owner text or verdict. The overlay's case copy drops answer gold.
+- Strict judging. A judge result must be `{"verdict": "pass|fail|unclear", "evidence": "<span>"}` with the
+  span quoted verbatim from the answer. Malformed, `unclear`, uppercase `PASS` or uncited results are
+  recorded and count as FAIL, never as pass. **Breaking for judge fixtures:** `PASS`/`FAIL` become `pass`/`fail`
+  plus `evidence`.
+- Fresh evaluations. Validate and replay-all verdicts are bound to sha256 of the wiki corpus, the case and
+  the tool source. Stale verdicts restart `validate`, fail `land` and the `landed` hook (exit 1, the land
+  rolls back) and make `replay-all` ask for `--fresh`.
+- `kb-eval --regressions` replaces "answer deferred" with "answer fresh pass" and "answer UNCHECKED": an
+  active answer case counts only from a fresh replay-all verdict. `make verify` WARNs on UNCHECKED > 0.
+  JSON keys `answer_passed`, `unchecked`, `unchecked_ids` replace `deferred_answer`.
+- Same-day corrections. A second correction to a page on the day of the first no longer fails the
+  minimality gate on `Updated`; tested with two corrections opened and landed in one day.
+
 ## 0.2.1 — 2026-10-26
 
 - WIZARD setup agent: open the repo in any AI agent tool and type `WIZARD` (`souls/WIZARD/soul.md`).
