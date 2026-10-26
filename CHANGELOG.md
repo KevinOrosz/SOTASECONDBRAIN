@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-26
+
+Lean path complete (build sessions 6–8).
+
+- New: `tests/test-kb-loop-e2e.py` (LOOP-E2E, session 8). On a throwaway fixture, driving every tool as a
+  CLI with fixture JSON for each model step: correct → validated → land → owner land (hook appends exactly
+  one case) → regressions green, lint 0 FAIL, ledger hash = disk hash, one Type/Confidence/Provenance line
+  → unland → regressions exit 1 (discrimination proof). Runs last in `scripts/verify.sh` and `make test`.
+- README: quickstart query now matches the demo (`composting`), a copy-paste `draft.md`, owner-id rule
+  stated, "What you have now" and "Next steps" sections. QUICKSTART gains the draft step.
 
 - New: `kb-correct.py land` (validated correction -> `kb-write put --supersedes ... --origin correction:CID`,
   stage `proposed`), `landed` (the kb-write land hook: checks the ledger row and disk hash, appends exactly

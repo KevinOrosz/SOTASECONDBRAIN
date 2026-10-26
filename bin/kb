@@ -18,7 +18,9 @@ case "$cmd" in
   autolink) exec python3 "$T/kb-autolink.py" "$@" ;;
   doctor)   exec python3 "$T/brain-doctor.py" "$@" ;;
   verify)   exec bash "$HERE/scripts/verify.sh" "$@" ;;
-  test)     rc=0; for t in "$HERE"/tests/test-kb-*.py; do python3 "$t" >/dev/null 2>&1 && echo "PASS  $(basename "$t")" || { echo "FAIL  $(basename "$t")"; rc=1; }; done; exit $rc ;;
+  test)     rc=0; run() { python3 "$1" >/dev/null 2>&1 && echo "PASS  $(basename "$1")" || { echo "FAIL  $(basename "$1")"; rc=1; }; }
+            for t in "$HERE"/tests/test-kb-*.py; do case "$t" in *loop-e2e.py) ;; *) run "$t" ;; esac; done
+            run "$HERE/tests/test-kb-loop-e2e.py"; exit $rc ;;  # LOOP-E2E last
   help|-h|--help)
     cat <<'TXT'
 usage: bin/kb <command> [args]

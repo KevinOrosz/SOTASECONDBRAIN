@@ -17,6 +17,10 @@ bin/kb query "spaced repetition"
 ```
 
 ```bash
+python3 -c "print('# Mulching\n\n## Core Claim\nMulch keeps soil moist and cool.\n\n## Evidence\n' + 'Mulch slows evaporation and smothers weeds in summer beds. ' * 12)" > draft.md
+```
+
+```bash
 bin/kb write put --agent RESEARCHER --kind article --slug mulching --category gardening --type article --confidence moderate --source-ref raw:soil-notes.md --body-file draft.md
 ```
 

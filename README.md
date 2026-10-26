@@ -10,9 +10,10 @@ No accounts, no servers, no network, no AI calls inside the tools. Python 3.9+ a
 
 ```bash
 git clone <this repo> second-brain-loop && cd second-brain-loop
-./bootstrap.sh --owner sam --demo     # use your own lowercase id instead of "sam"
-make verify                           # should end with: RESULT: 0 fail(s)
-bin/kb query "compost"                # search the demo wiki
+./bootstrap.sh --owner sam --demo     # your own id: lowercase, 2-32 chars, e.g. "sam"
+make verify                           # should end with: RESULT: 0 fail(s), 0 warn(s)
+make test                             # every suite PASS, the end-to-end loop test last
+bin/kb query "composting"                # search the demo wiki
 open KB/output/kb-search.html         # or open the file in any browser
 ```
 
@@ -28,7 +29,11 @@ Leave out `--demo` to start with a single welcome page instead of the example wi
      --type article --confidence moderate --source-ref raw:soil-notes.md --body-file draft.md
    ```
    The draft needs a `# Title`, a `## Core Claim` section and at least 100 words.
-3. **Review.** `bin/kb write list` shows open proposals. Read the file under `KB/inbox/`.
+   No draft yet? This makes a valid one (title, Core Claim, 100+ words):
+   ```bash
+   python3 -c "print('# Mulching\n\n## Core Claim\nMulch keeps soil moist and cool.\n\n## Evidence\n' + 'Mulch slows evaporation and smothers weeds in summer beds. ' * 12)" > draft.md
+   ```
+3. **Review.** `bin/kb write list` shows open proposals and their IDs (`AGENT/YYYY-MM-DD-slug`). Read the file under `KB/inbox/`.
 4. **Approve (land)** or decline:
    ```bash
    make land ID=RESEARCHER/2026-10-26-mulching
@@ -90,8 +95,29 @@ Any assistant that can run shell commands can propose pages with `bin/kb write p
 `KB/wiki` directly. See `docs/AGENTS.md` for how to give an agent its role and rules, and
 `docs/ARCHITECTURE.md` for how the pieces connect.
 
+## What you have now
+
+After the quickstart you have a working, checked knowledge base:
+
+- **A typed wiki** (`KB/wiki/`) whose every page header is linted, with a search page and a link graph.
+- **A gate.** Nothing enters the wiki unless you land it; every land and unland is fingerprinted in the ledger.
+- **A memory for mistakes.** Each correction you make becomes one small page fix plus a regression case,
+  and every later land must keep passing it.
+- **Proof the loop closes.** `tests/test-kb-loop-e2e.py` (last in `make test` and `make verify`) runs a
+  correction end to end on a throwaway copy, then undoes the fix and checks that its case now fails.
+
+## Next steps
+
+1. **Make it yours.** Run `./bootstrap.sh --owner YOURID` without `--demo` in a fresh copy, or keep the demo
+   and add pages. Drop your notes into `KB/RAW/`.
+2. **Grow it through the gate.** Propose pages with `bin/kb write put`, land the good ones with `make land`.
+3. **Correct it.** When an answer from the wiki is wrong, walk `docs/CORRECTION-TUTORIAL.md` once, then use
+   `bin/kb correct` for real.
+4. **Hand it to an agent.** Give an assistant `docs/AGENTS.md` and let it propose; you stay the only lander.
+5. **Check it weekly.** `make verify` should stay at 0 fail(s).
+
 ## Status
 
-Sessions 1–7 of an 8-session build are done (typed pages, lint, gated write-back, regression suite,
-correction compiler). Try it: `docs/CORRECTION-TUTORIAL.md`. Next: the end-to-end loop test
-(`docs/HANDOFF.md` §5). MIT licensed.
+Version 0.2.0. The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
+correction compiler, end-to-end loop test) is complete. Further phases wait until three real corrections
+have landed (`docs/HANDOFF.md` §5). MIT licensed.

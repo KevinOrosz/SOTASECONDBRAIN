@@ -37,6 +37,7 @@ else warn "regressions: $REG absent"; fi
 
 # 5. test suites
 for t in tests/test-kb-*.py; do
+  case "$t" in *test-kb-loop-e2e.py) continue ;; esac
   OUT=$(python3 "$t" 2>&1)
   if [ $? -eq 0 ]; then pass "$(basename "$t"): $(echo "$OUT" | grep -E '^Ran [0-9]+ tests' | head -1)"
   else echo "$OUT" | tail -20 | indent; fail "$(basename "$t")"; fi
@@ -45,6 +46,11 @@ done
 # 6. no network, no model calls in shipped tools
 HITS=$(grep -lE '(import|from) (requests|urllib|http\.client|socket|httpx|aiohttp)\b|subprocess.*(curl|wget|llm)|https?://' tools/*.py bin/kb 2>/dev/null)
 if [ -z "$HITS" ]; then pass "no-network: tools import no network client and call no URL"; else echo "$HITS" | indent; fail "no-network"; fi
+
+# 7. LOOP-E2E, last: the whole loop on a throwaway copy, plus the discrimination proof (spec §0, §1.5 block 20)
+OUT=$(python3 tests/test-kb-loop-e2e.py 2>&1)
+if [ $? -eq 0 ]; then pass "LOOP-E2E: correct -> land -> regressions green -> unland -> case FAILs ($(echo "$OUT" | grep -E '^Ran [0-9]+ tests' | head -1))"
+else echo "$OUT" | tail -20 | indent; fail "LOOP-E2E: test-kb-loop-e2e.py"; fi
 
 echo "---"
 echo "RESULT: $FAILS fail(s), $WARNS warn(s)"

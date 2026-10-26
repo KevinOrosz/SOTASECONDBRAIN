@@ -3,7 +3,7 @@
 > For any builder: a coding agent in any harness, any model, or a human engineer.
 >
 > **Development continues in this package** (`second-brain-loop/`). Sessions 1–5 were built inside a private reference instance and extracted here on 2026-10-26; commit ids in §4 belong to that instance's history, not this repo's. From session 6 on, build, test and commit here.
-> Updated 2026-10-26. Status: DRAFT until the instance owner reviews. Sessions 1–7 done.
+> Updated 2026-10-26. Status: DRAFT until the instance owner reviews. **Lean path complete: sessions 1–8 done (0.2.0).**
 
 ## 1. What this is
 
@@ -60,7 +60,8 @@ Every key is read through `tools/kb_config.py`. `kb.example.json` lists them all
 | 5b | Standalone package: `kb_config.py` path keys, `bootstrap.sh`, `bin/kb`, demo wiki, `scripts/verify.sh` | mid | DONE | this repo's first commit |
 | 6 | P3-S2 `kb-correct.py` core: open/diagnose/packet/record/validate/kill/status, packets, gate, overlays | high | DONE | see `git log` |
 | 7 | P3-S3 land/landed/replay-all, `skills/kb-correct.md`, Correction Protocol, one live correction | mid | DONE | see `git log` |
-| 8 | LOOP-E2E `tests/test-kb-loop-e2e.py` | high | **NEXT** | |
+| 8 | LOOP-E2E `tests/test-kb-loop-e2e.py`, E2E last in verify and `make test`, 0.2.0 release pass | high | DONE | see `git log` |
+| 9–13 | P1-S3, P2-S3, P4-S1..S3 | — | DEFERRED until 3 real corrections land discriminating cases (ruling 6) | |
 
 Tiers are provider-neutral: low / mid / high = any vendor's small / medium / large model.
 
@@ -70,19 +71,15 @@ Tiers are provider-neutral: low / mid / high = any vendor's small / medium / lar
 - Seal covers 602 hashes. Ledger rows 1–6 hold two put→withdraw probes and one full put→land→unland→withdraw round-trip, which left the wiki byte-identical with recall@6 held at 0.745.
 - `test-kb-write.py` 22/22, `test-kb-lint.py` 18/18, `test-kb-eval.py` 11/11, `verify.sh` 0 FAIL (block 18 included).
 
-**Verified state (this package):** `./bootstrap.sh --owner test --demo` then `make verify` → 0 FAIL, 0 WARN; `make test` 7/7 suites green (`test-kb-correct.py` 30, `test-kb-write.py` 23); put → land → unland round-trip on the demo wiki passes.
+**Verified state (this package):** `./bootstrap.sh --owner test --demo` then `make verify` → 0 FAIL, 0 WARN; `make test` 8/8 suites green with `test-kb-loop-e2e.py` last (`test-kb-correct.py` 30, `test-kb-write.py` 23, E2E 2); `make verify` ends with the LOOP-E2E line; README quickstart and daily-use steps re-run verbatim on a fresh clone.
 
-## 5. RESUME HERE — session 8 (LOOP-E2E)
+## 5. RESUME HERE — lean path complete; wait for 3 real corrections
 
-Session 7 shipped `kb-correct.py land | landed | replay-all`, `skills/kb-correct.md`, `templates/SYSTEM.md` (§ Correction Protocol; bootstrap copies it to `KB/SYSTEM.md`), `bin/kb correct`, `docs/CORRECTION-TUTORIAL.md` with fixtures in `examples/correction-walkthrough/`, and 8 more tests (30 in `tests/test-kb-correct.py`).
+Session 8 shipped `tests/test-kb-loop-e2e.py`: on `kb_testkit.fixture(..., regressions=True, git=True)` it drives `kb-correct` and `kb-write` as CLIs with fixture JSON for every model step. `open → diagnose → record → validate` reaches `validated`; `kb-correct land` → owner `kb-write land` → hook `landed` appends exactly 1 case; `kb-eval --regressions` exits 0, `kb-lint --rule all` 0 FAIL, ledger hash = disk hash, one Type/Confidence/Provenance line; `kb-write unland` → `kb-eval --regressions` exits 1 (discrimination proof). It runs last in `scripts/verify.sh` (section 7, spec block 20) and in `bin/kb test`.
 
-**Land path.** `validated → land` files one `kb-write put --supersedes wiki:STEM --origin correction:CID` proposal (stage `proposed`; the wiki is untouched). The owner runs `kb-write land ID --endorsed-by OWNER`; the hook runs `landed CID --ledger-seq N`, which checks ledger row N (event land, this proposal and origin), its hash against the page on disk, and the page against `after.md` outside Confidence/Provenance, then appends exactly one case (`landed`, `landed_version`, `ledger_seq`, fresh `r-NNNN` id) and sets stage `landed`. Rerun is a no-op. Failure modes exit 2 and append nothing; a failing hook leaves the land standing (`landed` can be retried).
+**Next.** No build session opens until the owner has landed 3 real corrections whose cases discriminate (ruling 6). Then sessions 9–13 per spec §0, in order.
 
-**Live proof (demo instance, fresh bootstrap).** `marigolds pests`: open → diagnose (`reachable-unretrieved`) → record conflict/compile/review → validate (base miss → patched flip, det green, KEEP) → land → `kb-write land` (hook ok) → regressions 1 → 2 green, exit 0 → `unland` → exit 1 (`FAIL r-0004 … expected stem not in top-10`). The discrimination proof holds.
-
-**Notes for session 8.** (a) `unland` leaves the case in the file, so later lands fail until the proposal is landed again or the case is retired; the tutorial says so. (b) `KB/` must be in git for `unland`; the shipped `.gitignore` excludes it, so demos remove that line. (c) The package ships no `skills/REGISTRY.md`, no `brain-think` skill and no `KB/SYSTEM.md` Write-Back Protocol, so spec P3 row 55 and the Checks-line pointer are not built; `kb_config` still reads an optional registry. (d) `replay-all` is manual and never a land gate. (e) `docs/RESEARCH.md` line 31 still names third-party tools.
-
-**LOOP-E2E builds** `tests/test-kb-loop-e2e.py` against spec §0 acceptance items 1–N: the whole loop on a throwaway copy, fixture files for model steps, wiki/RAW byte checks, discrimination falsifier.
+**Carried notes.** (a) `unland` of a correction leaves its case active, so later lands fail until the fix is relanded or the case retired. (b) `KB/` must be in git to unland a page that existed before (supersede); the shipped `.gitignore` excludes it. (c) No `skills/REGISTRY.md`, `brain-think` or Write-Back Protocol ships; spec P3 row 55 waits for session 10. (d) `replay-all` is manual, never a land gate. (e) `docs/RESEARCH.md` line 31 names third-party tools. (f) `kb-query`'s keyword scorer does not stem (`compost` misses `composting`).
 
 ## 6. Rules for every session
 
