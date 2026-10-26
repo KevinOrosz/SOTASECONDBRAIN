@@ -1,21 +1,21 @@
 ---
-ORCHESTRATOR HANDOFF
-agent: RESEARCHER (via ORCHESTRATOR)
+MAGI HANDOFF
+agent: GURU (via MAGI)
 mission: Upgrade "agentic second brain SOTA" paste to build-ready spec, grounded in the reference instance's live KB
 date: 2026-10-23
-type: build-ready spec (research brief + structured data + BUILDER phases)
+type: build-ready spec (research brief + structured data + CODA phases)
 score: 8.6/10 (Accuracy 9, Actionability 9, Completeness 8, Conciseness 8, Clarity 9)
 key_findings:
   - Paste is directionally right, factually loose: 4 of 8 named claims corrected below. Cornelius has no "canon", 114 stars, and needs Trinity for autonomy; GBrain's reranker, source-tier boost, and its own OAuth leak caveat were omitted.
   - the reference instance already has 5 of 7 SOTA layers (Markdown truth, graph, synthesis+gaps, skills, governance). The two real gaps are agent WRITE-BACK with provenance and a CORRECTION COMPILER with a regression suite (Meta's loop). Everything else is scale theater at 589 articles.
   - Hybrid/embeddings/rerank stay REJECTED on existing evidence until corpus >5k articles or recall@6 <0.70. Memory-benchmark numbers (LoCoMo/LongMemEval) are vendor-reported and mutually contradictory; none applies to a 3.3MB wiki.
-suggested_use: BUILDER builds P0–P3 in order (gazetteer → frontmatter contract + linter → inbox write-back → correction compiler). ORCHESTRATOR owns the endorsement gate. The owner reviews before any commit.
+suggested_use: CODA builds P0–P3 in order (gazetteer → frontmatter contract + linter → inbox write-back → correction compiler). MAGI owns the endorsement gate. The owner reviews before any commit.
 ---
 
 # Agentic Second Brain — SOTA Spec v2 (the reference instance delta)
 
 **Status:** DRAFT. Nothing here is final until the owner reviews.
-**Scope:** (1) fact-check the paste, (2) state the verified SOTA pattern, (3) gap it against the reference instance's live KB, (4) hand BUILDER a phased build with Target/Batch/Metric per phase. Out of scope: multi-user federation, external sync, any hosted product.
+**Scope:** (1) fact-check the paste, (2) state the verified SOTA pattern, (3) gap it against the reference instance's live KB, (4) hand CODA a phased build with Target/Batch/Metric per phase. Out of scope: multi-user federation, external sync, any hosted product.
 
 ## 0. Counterargument first
 
@@ -59,9 +59,9 @@ Second counter: the paste treats three systems as peers. They are not. GBrain is
 | 7 Correction loop | the standing-rules file (manual, capped 1KB), `kb-eval.py`, `evals/`, `brain-dream` DRAFT report-only, `dream-loop` weekly | **GAP** — corrections never become KB edits + tests |
 | Governance | Single owner, draft-until-reviewed, run log, no egress | **HAVE** (solo-adequate; federation out of scope) |
 
-## 4. Build spec — BUILDER phases (Target / Batch / Metric)
+## 4. Build spec — CODA phases (Target / Batch / Metric)
 
-> Build-ready detail (contracts, CLI, tests, 13-session plan, E2E acceptance) lives in `docs/SPEC.md`. This section is the summary; that file is canonical for BUILDER.
+> Build-ready detail (contracts, CLI, tests, 13-session plan, E2E acceptance) lives in `docs/SPEC.md`. This section is the summary; that file is canonical for CODA.
 
 **P0 — Entity gazetteer** (already specced in `KB/CATALOG.md`; just do it)
 Target `output/kb-gazetteer.json`. Batch: one file, 60–150 entities, 4+ file threshold, no common-word aliases. Metric: MENTIONS edges > 0 and recall@6 ≥ 0.755 held.
@@ -71,7 +71,7 @@ Target: `kb-graph.py` (+ `tools/kb-lint.py`), every `KB/wiki/**/*.md`. Add:
 ```yaml
 type: position | taxonomy | routing | gateway | article | source
 depends_on: [wiki/path, ...]
-consumers:  [wiki/path, skill:brain-think, agent:RESEARCHER]
+consumers:  [wiki/path, skill:brain-think, agent:GURU]
 confidence: high | moderate | low
 last_verified: 2026-10-23
 ```
@@ -79,7 +79,7 @@ Linter checks (all deterministic, zero LLM): dangling `depends_on`, orphan `cons
 Why `type:` matters: Meta's "position files" = the owner's operating systems (`os-audit` output); "gateway files" = threshold tests before an agent enters a domain (voice-guard already is one, unlabeled).
 
 **P2 — Inbox write-back with provenance + one endorsement gate** (GBrain verbs, Cornelius gate)
-Target: `tools/kb-write.py` with verbs `put --type --source --provenance`, `link`, `withdraw`. Agents write **only** to `KB/inbox/{agent}/{date}-{slug}.md`; frontmatter carries `proposed_by`, `source_refs`, `confidence`, `supersedes`. ORCHESTRATOR runs the gate; `land` moves to wiki, runs autolink, appends a run-log row; `withdraw` soft-deletes with reason. Batch: wire RESEARCHER + brain-think gap findings first (they already emit "missing/thin" items with no sink). Metric: 100% of landed pages carry provenance; 0 direct agent writes to `KB/wiki` (linter enforces); gap-analysis items converted to inbox proposals per week ≥ 3.
+Target: `tools/kb-write.py` with verbs `put --type --source --provenance`, `link`, `withdraw`. Agents write **only** to `KB/inbox/{agent}/{date}-{slug}.md`; frontmatter carries `proposed_by`, `source_refs`, `confidence`, `supersedes`. MAGI runs the gate; `land` moves to wiki, runs autolink, appends a run-log row; `withdraw` soft-deletes with reason. Batch: wire GURU + brain-think gap findings first (they already emit "missing/thin" items with no sink). Metric: 100% of landed pages carry provenance; 0 direct agent writes to `KB/wiki` (linter enforces); gap-analysis items converted to inbox proposals per week ≥ 3.
 
 **P3 — Correction compiler + regression suite** (Meta loop, the 200% move)
 Target: `tools/kb-correct.py`, `evals/regressions.jsonl`. Flow per correction:
@@ -91,13 +91,13 @@ Regression case shape:
 ```json
 {"id":"r-0001","q":"...","expected":"...","forbidden":["..."],"origin":"rule:<id>","landed":"2026-10-23"}
 ```
-Batch: seed from the 12 rules in the standing-rules file (each becomes a case or dies). Metric: zero regressions across cycles; every correction yields +1 case; standing-rules growth → 0 (rules become tests). Falsifier: if 10 corrections produce <7 reachable-vs-gap diagnoses that BUILDER agrees with, the diagnose step is theater, revert to manual.
+Batch: seed from the 12 rules in the standing-rules file (each becomes a case or dies). Metric: zero regressions across cycles; every correction yields +1 case; standing-rules growth → 0 (rules become tests). Falsifier: if 10 corrections produce <7 reachable-vs-gap diagnoses that CODA agrees with, the diagnose step is theater, revert to manual.
 
 **P4 — Incubation on existing dream-loop** (Cornelius pattern, writes gated)
-Target: `brain-dream` skill → from report-only to proposal-emitting. Rotating moves over the one weekly tension it already surfaces: {contradict, generalize, find-missing-link, age-check}. Output goes to `KB/inbox/ORCHESTRATOR/`. Coherence sweep = `brain-doctor.py` + `last_verified` staleness. Batch: 1 tension/week. Metric: 1 inbox proposal/week; stale-page count trending down; the owner gate time ≤ 5 min/week (AUDITOR measures).
+Target: `brain-dream` skill → from report-only to proposal-emitting. Rotating moves over the one weekly tension it already surfaces: {contradict, generalize, find-missing-link, age-check}. Output goes to `KB/inbox/MAGI/`. Coherence sweep = `brain-doctor.py` + `last_verified` staleness. Batch: 1 tension/week. Metric: 1 inbox proposal/week; stale-page count trending down; the owner gate time ≤ 5 min/week (CLERIC measures).
 
 **P5 — Skill optimization loop** (GBrain `skillopt`, optional)
-Target: one skill at a time against its eval in `evals/`. Keep edit only if score rises (RESEARCHER loop mode already encodes this; apply it to `SKILL.md` files). Metric: ≥ +0.5 on the skill's metric or revert.
+Target: one skill at a time against its eval in `evals/`. Keep edit only if score rises (GURU loop mode already encodes this; apply it to `SKILL.md` files). Metric: ≥ +0.5 on the skill's metric or revert.
 
 **NOT building (data says so):** embeddings, reranker, pgvector, graph DB, LLM entity extraction, federation/OAuth. Re-open trigger: corpus > 5,000 articles **or** recall@6 < 0.70 after P0–P1 **or** a second human needs scoped access. GBrain's own default (PGLite, ≤50K pages, no pgvector) agrees. `[high]`
 
@@ -113,10 +113,10 @@ Target: one skill at a time against its eval in `evals/`. Keep edit only if scor
 
 ## 6. Open questions / falsifiers
 
-- `[unknown]` Does the owner want ORCHESTRATOR or himself at the endorsement gate? Meta uses SMEs; Cornelius uses one human. Default proposed: ORCHESTRATOR gates, the owner spot-checks weekly via AUDITOR burden report.
+- `[unknown]` Does the owner want MAGI or himself at the endorsement gate? Meta uses SMEs; Cornelius uses one human. Default proposed: MAGI gates, the owner spot-checks weekly via CLERIC burden report.
 - `[moderate]` P3 assumes `brain-think` is deterministic enough for blind replay. If answer variance > judge tolerance, replay needs 3 runs + majority.
 - `[low]` Meta's ~80% token cut came from replacing one flat instruction file with staged recipes. the reference instance already stages via two-layer skill resolver; expect far less than 80%. Measure before claiming.
-- Falsifier for the whole spec: if after P2+P3 the weekly count of corrections that reach the KB as landed edits is still 0, the gap was never tooling. It was attention. Then AUDITOR, not BUILDER, owns the next move.
+- Falsifier for the whole spec: if after P2+P3 the weekly count of corrections that reach the KB as landed edits is still 0, the gap was never tooling. It was attention. Then CLERIC, not CODA, owns the next move.
 
 ## Sources
 GBrain README (31.1k★, PGLite/pgvector, RRF+reranker, OAuth 2.1 caveats, BrainBench P@5/R@5, `skillopt`) — https://github.com/garrytan/gbrain `[high]` · Cornelius README (7-layer BDG, 60 skills, endorsement gate, incubation loop, 114★, Trinity requirement) — https://github.com/Abilityai/cornelius `[high]` · Meta Engineering, "Organizational Second Brain" 2026-09-02 (four layers, 200+ files, frontmatter dependency graph, diagnose→compile→validate→land, ~80% tokens, zero regressions) — https://engineering.fb.com/2026/09/02/ml-applications/organizational-second-brain-ai-learns-from-experts/ `[high]` · Cornelius incubation changelog 2026-05-17 — https://docs.ability.ai/announcements/2026-05-17-142114 `[moderate]` · Vyborov on background connection scanning — https://www.ability.ai/blog/autonomous-second-brain-connections `[moderate]` · Mem0 "State of AI Agent Memory 2026" (vendor) — https://mem0.ai/blog/state-of-ai-agent-memory-2026 `[low]` · Atlan memory framework comparison (conflicting numbers) — https://atlan.com/know/best-ai-agent-memory-frameworks-2026/ `[low]` · Vendor agent-skill docs on context management and progressive disclosure `[moderate]` · Local: the run log 2026-08-12 (GraphRAG last 4/4, embeddings rejected), `KB/CATALOG.md` 2026-08-15, the skill registry, `tools/session.sh open` 2026-10-23 `[high]`

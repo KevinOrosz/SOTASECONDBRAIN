@@ -25,7 +25,7 @@ Leave out `--demo` to start with a single welcome page instead of the example wi
 1. **Collect.** Drop source material (notes, clippings, transcripts) into `KB/RAW/` as `.md` files.
 2. **Propose.** Write a draft page and put it in the inbox:
    ```bash
-   bin/kb write put --agent RESEARCHER --kind article --slug mulching --category gardening \
+   bin/kb write put --agent GURU --kind article --slug mulching --category gardening \
      --type article --confidence moderate --source-ref raw:soil-notes.md --body-file draft.md
    ```
    The draft needs a `# Title`, a `## Core Claim` section and at least 100 words.
@@ -36,8 +36,8 @@ Leave out `--demo` to start with a single welcome page instead of the example wi
 3. **Review.** `bin/kb write list` shows open proposals and their IDs (`AGENT/YYYY-MM-DD-slug`). Read the file under `KB/inbox/`.
 4. **Approve (land)** or decline:
    ```bash
-   make land ID=RESEARCHER/2026-10-26-mulching
-   bin/kb write reject RESEARCHER/2026-10-26-mulching --reason "too thin" --by sam
+   make land ID=GURU/2026-10-26-mulching
+   bin/kb write reject GURU/2026-10-26-mulching --reason "too thin" --by sam
    ```
    Landing writes the page, updates the indexes, rebuilds search, and re-runs every check. If any
    check fails, everything is put back exactly as it was.
@@ -56,7 +56,7 @@ Run `bin/kb help` for every command.
 | **type** | What kind of page it is: `article`, `taxonomy` (a category index), `routing` (the top index), `source`, `position`, `gateway`. |
 | **lint** | An automatic check that every page header follows the rules (`bin/kb lint`). |
 | **owner** | The one person allowed to approve changes. Set once in `KB/kb.json`. |
-| **agent** | Anyone allowed to propose: an AI assistant or a person, named in UPPERCASE (`RESEARCHER`). |
+| **agent** | Anyone allowed to propose: an AI assistant or a person, named in UPPERCASE (`GURU`). |
 | **inbox** | `KB/inbox/` — proposals waiting for the owner. Agents only ever write here. |
 | **land** | Approve a proposal: the only way a page enters the wiki. |
 | **unland** | Undo one land and put the proposal back in the inbox. |

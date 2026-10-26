@@ -1,5 +1,5 @@
 # Thin wrappers. Every target is one command you can also run by hand.
-.PHONY: help init demo verify test lint status land unland
+.PHONY: help init demo verify test lint status land unland sandbox
 help:
 	@echo "make init | demo | verify | test | lint | status | land ID=... [OWNER=...] | unland ID=... REASON=..."
 init:
@@ -12,6 +12,9 @@ test:
 	bin/kb test
 lint:
 	bin/kb lint
+sandbox:
+	scripts/sandbox.sh
+
 status:
 	bin/kb write list
 	bin/kb doctor || true

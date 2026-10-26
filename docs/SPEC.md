@@ -1,15 +1,15 @@
 ---
 HANDOFF
-agent: RESEARCHER
-mission: Turn the agentic second-brain research into one build-ready BUILDER spec: typed pages, gated write-back, correction compiler, incubation.
+agent: GURU
+mission: Turn the agentic second-brain research into one build-ready CODA spec: typed pages, gated write-back, correction compiler, incubation.
 date: 2026-10-23
 type: build spec
 score: n/a
 key_findings:
   - The loop only closes if P3 regression cases gate P2 lands. All four drafts missed this. The land post-check now runs `kb-eval --regressions`. [high]
   - Header keys, ledger events, kb-lint ownership, verify numbering and Confidence/Last-Verified semantics had drifted across the drafts. Each now has exactly one home, in §1. [high]
-  - Lean path is 8 BUILDER sessions. P1-S3, P2-S3 and P4 wait until 3 real corrections land. Skipping them breaks nothing. [moderate]
-suggested_use: BUILDER session plan. Hand BUILDER one §0 row, plus §1, plus that phase's section. Nothing else.
+  - Lean path is 8 CODA sessions. P1-S3, P2-S3 and P4 wait until 3 real corrections land. Skipping them breaks nothing. [moderate]
+suggested_use: CODA session plan. Hand CODA one §0 row, plus §1, plus that phase's section. Nothing else.
 ---
 
 > **Package note (2026-10-26).** This spec was written inside a reference instance. "Verify block N" means one numbered section of that instance's verify script; in this package every such check lives in `scripts/verify.sh`, which runs all `tests/test-kb-*.py` automatically. Paths are rewritten to this package's layout; instance paths are `KB/kb.json` keys (see `docs/HANDOFF.md` §3).
@@ -17,7 +17,7 @@ suggested_use: BUILDER session plan. Hand BUILDER one §0 row, plus §1, plus th
 # Second-Brain Loop — Build Spec
 
 **Status:** DRAFT until the owner reviews.
-**Portability:** model, harness and founder agnostic. Instance identity (owner id, agent ids) lives only in `KB/kb.json`; see `docs/HANDOFF.md` §3. Model tiers low / mid / high mean any vendor's small / medium / large model. Agents (ORCHESTRATOR, RESEARCHER, BUILDER, AUDITOR, SENSOR, REPURPOSER) are the reference swarm; see `docs/SWARM.md`.
+**Portability:** model, harness and founder agnostic. Instance identity (owner id, agent ids) lives only in `KB/kb.json`; see `docs/HANDOFF.md` §3. Model tiers low / mid / high mean any vendor's small / medium / large model. Agents (MAGI, GURU, CODA, CLERIC, SIGNAL, PRISM) are the reference swarm; see `docs/SWARM.md`.
 **Research basis:** `docs/RESEARCH.md`. Not restated here.
 
 **TL;DR**
@@ -32,9 +32,9 @@ suggested_use: BUILDER session plan. Hand BUILDER one §0 row, plus §1, plus th
 
 ## 0. Build sequence + end-to-end acceptance
 
-**Precondition.** Before session 1, the owner settles the six §6 rulings in one ORCHESTRATOR chat. That includes a single `KB/SYSTEM.md` edit approval covering P1, P2 and P3. ORCHESTRATOR logs it as one run-log row, so no later session blocks on it again.
+**Precondition.** Before session 1, the owner settles the six §6 rulings in one MAGI chat. That includes a single `KB/SYSTEM.md` edit approval covering P1, P2 and P3. MAGI logs it as one run-log row, so no later session blocks on it again.
 
-**Sessions.** One BUILDER mission each.
+**Sessions.** One CODA mission each.
 
 | # | Session | Model | Scope | Depends on |
 |---|---|---|---|---|
@@ -50,7 +50,7 @@ suggested_use: BUILDER session plan. Hand BUILDER one §0 row, plus §1, plus th
 | 10 | P2-S3 | mid | brain-think 4b, kb-ingest rewrite, REGISTRY, Write-Back Protocol, WP1 to FAIL | 4, 9 |
 | 11 | P4-S1 | high | brain-dream seam on real P2, staleness, block 19, E2E P4 variant | 8, 10 |
 | 12 | P4-S2 | mid | skill, row 52, eval, guardrail, one supervised fire | 11 |
-| 13 | P4-S3 | mid (ORCHESTRATOR) | 4-fire pilot, fresh judge, LIVE or revert | 12 |
+| 13 | P4-S3 | mid (MAGI) | 4-fire pilot, fresh judge, LIVE or revert | 12 |
 
 **Critical path:** sessions 1–8. Lean path (D6): stop at 8. Open 9–13 only after 3 real corrections land discriminating cases.
 
@@ -112,10 +112,10 @@ Each contract has one home. Every other phase imports it and never redefines it.
 ```
 **Type:** article                          # required after P1-S3
 **Depends-On:** stem-a, stem-b             # plain stems, not [[links]]
-**Consumers:** skill:brain-think, agent:RESEARCHER
+**Consumers:** skill:brain-think, agent:GURU
 **Confidence:** high|moderate|low          # absent = unrated
 **Last-Verified:** 2026-10-23              # ISO ≤ today; absent = None (unverified)
-**Provenance:** inbox RESEARCHER/2026-10-24-x · proposed RESEARCHER · endorsed OWNER 2026-10-24 · ledger 14
+**Provenance:** inbox GURU/2026-10-24-x · proposed GURU · endorsed OWNER 2026-10-24 · ledger 14
 ```
 
 **Key rules.**
@@ -180,7 +180,7 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 
 **Ledger events.** One canonical enum: `put|withdraw|reject|land|unland|resolve|adopt|reseal`. Row shape:
 ```json
-{"seq":14,"ts":"2026-10-24T09:12:03","event":"land","id":"RESEARCHER/2026-10-24-x","actor":"owner","origin":"correction:C-0001",
+{"seq":14,"ts":"2026-10-24T09:12:03","event":"land","id":"GURU/2026-10-24-x","actor":"owner","origin":"correction:C-0001",
  "files":{"KB/wiki/topic/x.md":"<sha256>"},"prior":{"KB/wiki/topic/x.md":null},"resolved":[],"reason":""}
 ```
 
@@ -213,7 +213,7 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 
 ### 1.5 verify.sh blocks
 
-**Renumber first.** P1-S1 fixes the live duplicate 12: 11 Git shield, 12 REPURPOSER, 13 Brain health, 14 Voice, 15 KB graph.
+**Renumber first.** P1-S1 fixes the live duplicate 12: 11 Git shield, 12 PRISM, 13 Brain health, 14 Voice, 15 KB graph.
 
 **New blocks.** Each goes before `summary`, uses `mktemp` and stays bash 3.2.
 
@@ -307,7 +307,7 @@ kb-lint.py [--root] [--json] [--category NAME|_root] [--rule …] [--contract] [
 - Session scripts and skill registry: unchanged.
 - Loop-log row:
   ```
-  2026-10-2X | BUILDER | command | P1 contract v2 migration | kb-lint | n/a | 13 | KEEP | typed {t}/{n}; 0 FAIL; soft baseline {captured}; recall@6 {before}={after}; pre-SHA {sha}; verify 0 FAIL
+  2026-10-2X | CODA | command | P1 contract v2 migration | kb-lint | n/a | 13 | KEEP | typed {t}/{n}; 0 FAIL; soft baseline {captured}; recall@6 {before}={after}; pre-SHA {sha}; verify 0 FAIL
   ```
 
 **8 Tests.** `test-kb-lint.py`, under 5 s.
@@ -340,7 +340,7 @@ Per batch (`_root` plus 12 categories):
 3. `kb-index.py && kb-graph.py`
 4. full verify, 0 FAIL
 
-The rebuild in step 3 is mandatory. Skip it and brain-doctor hash drift raises real FAILs, and BUILDER stalls. [high]
+The rebuild in step 3 is mandatory. Skip it and brain-doctor hash drift raises real FAILs, and CODA stalls. [high]
 
 After the last batch:
 - `kb-eval --json` `new.combined` must be equal before and after. If not, revert and don't tune. [moderate]: kb-index counts raw words.
@@ -387,7 +387,7 @@ Zero cycles and zero dangling deps are trivial at launch; the fixtures prove the
   - dedupe
   - ≤4 proposals per run
   - inbox count shown at session open
-  - one global weekly gate budget (D2), which AUDITOR measures from the ledger
+  - one global weekly gate budget (D2), which CLERIC measures from the ledger
 - **Non-goals:**
   - no auto-landing
   - no LLM calls in the tools
@@ -533,7 +533,7 @@ Exit codes:
 
 **7 Integration hooks.**
 - **Block 17.** WP1 is WARN through P2-S2 and FAIL from P2-S3 (D4). It asserts seal/ledger match, not authorship (no overclaiming).
-- **Row 51 Trigger:** `; gap items → KB/inbox/RESEARCHER/ via tools/kb-write.py put`.
+- **Row 51 Trigger:** `; gap items → KB/inbox/GURU/ via tools/kb-write.py put`.
 - **Row 51 Status:** `; P2 gap sink (requalify next run)`.
 - **Row 22 Trigger:** `New canon → KB/inbox via kb-write.py put, landed on the owner endorsement`.
 - **Logs.** brain-think note: `inbox +{n} ({d} dup)`. Session row: `landed N (ledger seq a–b)`.
@@ -587,7 +587,7 @@ Acceptance:
 
 Secondary signal: `list --origin skill:brain-think --since` shows ≥3 a week.
 
-Global falsifier: after 4 weeks, ≥12 puts across all origins with 0 landed or resolved means the problem is attention, not tooling. AUDITOR takes it, and the per-run cap drops to 2.
+Global falsifier: after 4 weeks, ≥12 puts across all origins with 0 landed or resolved means the problem is attention, not tooling. CLERIC takes it, and the per-run cap drops to 2.
 
 **11 Decisions:** §6 D2, D3, D4.
 
@@ -730,11 +730,11 @@ P2 exit codes map in: P2 3 or 4 → 1; P2 2 → 2.
 - **Block 18** prints `regressions: N deterministic green, M answer deferred, D dormant`.
 - **Row 55:**
   ```
-  | 55 | `kb-correct` | knowledge | A | The owner flags a wrong brain answer → deterministic diagnose, one-page diff, blind replay, inbox proposal + regression case. Seam: `tools/kb-correct.py` | mid | RESEARCHER | DRAFT — P3; first discriminating correction flips LIVE |
+  | 55 | `kb-correct` | knowledge | A | The owner flags a wrong brain answer → deterministic diagnose, one-page diff, blind replay, inbox proposal + regression case. Seam: `tools/kb-correct.py` | mid | GURU | DRAFT — P3; first discriminating correction flips LIVE |
   ```
 - **Loop-log row.** The score column is binary: 1 = discriminating.
   ```
-  2026-10-24 | RESEARCHER | skill:kb-correct | C-0001 example correction | correction | 1 | 1 | KEEP | diag:raw-only; KB/wiki/x.md +12/-2; review APPROVE; base FAIL→patched 3/3; det green
+  2026-10-24 | GURU | skill:kb-correct | C-0001 example correction | correction | 1 | 1 | KEEP | diag:raw-only; KB/wiki/x.md +12/-2; review APPROVE; base FAIL→patched 3/3; det green
   ```
 
 **8 Tests.** Fixture LLM JSON, under 10 s.
@@ -804,7 +804,7 @@ Acceptance:
 ## P4 — Incubation: brain-dream emits gated proposals (deferred under lean path)
 
 **1 Goal / Non-goals.**
-- **Goal.** One move over one spine tension per weekly fire. ≤2 proposals go into `KB/inbox/ORCHESTRATOR/` via P2. brain-doctor gains a staleness INFO line. AUDITOR measures gate time.
+- **Goal.** One move over one spine tension per weekly fire. ≤2 proposals go into `KB/inbox/MAGI/` via P2. brain-doctor gains a staleness INFO line. CLERIC measures gate time.
 - **Counter.** Two fires ran, both with 0 link candidates, and the schedule is gone. [moderate] Answer: the metric counts landed proposals, and missing it reverts P4. [high]
 - **Non-goals:**
   - writes to wiki or RAW
@@ -911,14 +911,14 @@ Over-budget is a JSON field, `over_budget`. It is not an exit code.
     - `owner_min` sums the gaps between consecutive events, each gap capped at 5 idle minutes. It is a capped upper bound.
     - A landed proposal with no `opened` event → `measured:false`, never a pass.
     - `--pilot` prints `{fires, proposals, landed, landed_per_fire}` from P2 land rows with this origin, counting only `decided_at` ≤7 days after the fire.
-11. **LLM:low AUDITOR.** Log a burden row. If the week is over the global budget, hand off with the fix order: batch first, then default.
+11. **LLM:low CLERIC.** Log a burden row. If the week is over the global budget, hand off with the fix order: batch first, then default.
 
 **7 Integration hooks.**
 - Verify: block 19, plus the doctor message change.
 - Row 52 Status: `DRAFT — P4 proposal-emitting; requalify per eval-brain-dream.md`.
 - Loop-log row per fire:
   ```
-  2026-11-01 | ORCHESTRATOR+RESEARCHER | skill:brain-dream | weekly-brain-dream | brief+proposals | n/a | 1 | DRAFT | tension:armor-opening; move:find-missing-link; proposals:2; landed:1; owner_min:3.5 (capped); digest held; verify 0 FAIL
+  2026-11-01 | MAGI+GURU | skill:brain-dream | weekly-brain-dream | brief+proposals | n/a | 1 | DRAFT | tension:armor-opening; move:find-missing-link; proposals:2; landed:1; owner_min:3.5 (capped); digest held; verify 0 FAIL
   ```
 
 **8 Tests.** Fixture: `kb_testkit` plus 5 articles, the spine, a progress table with a legacy row, and the **real** P2 in tmp.
@@ -970,14 +970,14 @@ Acceptance:
 - [ ] digest unchanged on every fire
 - [ ] ≥2 cites per proposal
 - [ ] `owner_min` measured every week, and within P4's slice
-- [ ] a fresh independent judge scores it before LIVE; the BUILDER never self-qualifies
+- [ ] a fresh independent judge scores it before LIVE; the CODA never self-qualifies
 
 **11 Decisions:** §6 D2, D6.
 
 **12 Sessions.**
 - **S1 (high tier):** seam, staleness, block 19, E2E P4 variant. Done when live `plan --json` is valid and the digest is unchanged.
 - **S2 (mid tier):** skill, row 52, eval, mission, one supervised fire, first gate line.
-- **S3 (mid-tier, ORCHESTRATOR):** pilot, judge, then LIVE or revert, logged.
+- **S3 (mid-tier, MAGI):** pilot, judge, then LIVE or revert, logged.
 
 ---
 
@@ -986,12 +986,12 @@ Acceptance:
 | Risk | Rating | Mitigation |
 |---|---|---|
 | Cases don't discriminate | [high] | E2E step 4; if it fails on the fixture, stop P3 |
-| P1 batch FAILs stall BUILDER or teach it to ignore FAIL | [high] | Rebuild plus full verify 0 FAIL after every batch |
-| P2, P3 and P4 all feed one the owner gate with no shared cap | [high] | One global weekly budget (D2); AUDITOR measures it from the ledger; global falsifier |
+| P1 batch FAILs stall CODA or teach it to ignore FAIL | [high] | Rebuild plus full verify 0 FAIL after every batch |
+| P2, P3 and P4 all feed one the owner gate with no shared cap | [high] | One global weekly budget (D2); CLERIC measures it from the ledger; global falsifier |
 | 13 sessions before one corrected answer lands | [high] | Lean 8-session path (D6) |
 | Header layout drift breaks byte and hash checks | [moderate] | One order in `CONTRACT`; `header-order` WARN; Provenance replaced, not appended; P3 strips `P2_MANAGED` |
 | Replay cost scales with the suite | [moderate] | Cap of 25; no skill targets in v1 |
-| WP1 FAIL fires on Obsidian hand edits | [moderate] | WARN until P2-S3; AUDITOR counts adopts (D4) |
+| WP1 FAIL fires on Obsidian hand edits | [moderate] | WARN until P2-S3; CLERIC counts adopts (D4) |
 | Hardcoded counts go stale after the first land | [moderate] | Capture and log, never assert; skill-test reads REGISTRY |
 | recall@6 shifts after migration | [moderate] | Measured gate; revert on change, no tuning |
 | Loop-log over cap causes boot DRIFT | [moderate] | Rotate in P1-S1; one row per session |
@@ -1007,15 +1007,15 @@ Acceptance:
 
 ---
 
-## 6. Open decisions for the owner (one ORCHESTRATOR chat, before session 1)
+## 6. Open decisions for the owner (one MAGI chat, before session 1)
 
 1. **Header syntax: bold-line or YAML?** Default: **bold-line.** One parser convention, zero dependencies, and 4 tools already read it.
-2. **Who lands, and how much time does it get?** Default: **The owner lands everything** (P2, P3, P4), with ORCHESTRATOR pre-screening in chat.
+2. **Who lands, and how much time does it get?** Default: **The owner lands everything** (P2, P3, P4), with MAGI pre-screening in chat.
    - Global gate budget: ≤10 min/week. [low] This is a starting number, not evidence.
    - Brain-dream's share of that: ≤5 min.
-   - Revisit if AUDITOR shows a breach: after 10 corrections (ORCHESTRATOR could land P3), and after the pilot (ORCHESTRATOR could land age-checks).
+   - Revisit if CLERIC shows a breach: after 10 corrections (MAGI could land P3), and after the pilot (MAGI could land age-checks).
 3. **`KB/SYSTEM.md` edits.** P1 adds a template pointer. P2 adds the vault line and Write-Back Protocol. P3 adds the Correction Protocol. The file says "Read only by LLM." Default: **yes, one approval now.** the owner sees each exact diff in its session. Without this, the doctrine has no home.
-4. **Obsidian hand edits under WP1.** Default: **WARN through P2-S2, FAIL from P2-S3.** verify prints the exact `land --adopt` line. Revert to WARN if AUDITOR counts more than 2 adopts a week.
+4. **Obsidian hand edits under WP1.** Default: **WARN through P2-S2, FAIL from P2-S3.** verify prints the exact `land --adopt` line. Revert to WARN if CLERIC counts more than 2 adopts a week.
 5. **Seeds and budgets.** Default: **accept all three.**
    - The 5 `source` overrides, `client-pricing-structures` included.
    - Ratchet the soft 400-word budget at its captured value. No rewrite campaign, even though 49% of articles exceed SYSTEM.md's 200–400 today.
@@ -1046,4 +1046,4 @@ Lexical plus graph retrieval is enough at this corpus size. GBrain's own default
 - recall@6 falls below 0.70 after P0–P1
 - a second human needs scoped access
 
-**Falsifier for the whole spec.** After P2 and P3, if the weekly count of corrections that land as wiki edits is still 0, tooling was never the gap. Attention was. AUDITOR owns the next move, not BUILDER.
+**Falsifier for the whole spec.** After P2 and P3, if the weekly count of corrections that land as wiki edits is still 0, tooling was never the gap. Attention was. CLERIC owns the next move, not CODA.

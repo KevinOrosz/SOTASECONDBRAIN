@@ -8,13 +8,13 @@ model; agents call the tools. Roles come from `docs/SWARM.md`; this page is the 
 Agent ids are UPPERCASE (`^[A-Z][A-Z0-9_]{1,31}$`). Either list them in `KB/kb.json`:
 
 ```json
-{ "owner": "sam", "agents": ["RESEARCHER", "BUILDER"] }
+{ "owner": "sam", "agents": ["GURU", "CODA"] }
 ```
 
 or give each one a folder that matches `agents_glob` (default `agents/*/soul.md`):
 
 ```
-agents/RESEARCHER/soul.md     identity, lane, inputs, outputs, boundaries, done condition
+agents/GURU/soul.md     identity, lane, inputs, outputs, boundaries, done condition
 ```
 
 ## 2. Boot an agent
@@ -35,9 +35,9 @@ session. A fresh session reads files, not chat history.
 
 | Role | Does with this package |
 |---|---|
-| ORCHESTRATOR | routes a request, pre-screens inbox proposals for the owner |
-| RESEARCHER | reads `KB/RAW`, proposes articles and links, files gaps |
-| BUILDER | changes `tools/` and `tests/`, keeps `make test` and `make verify` green |
-| AUDITOR | measures owner review time per land, proposes ways to cut it |
+| MAGI | routes a request, pre-screens inbox proposals for the owner |
+| GURU | reads `KB/RAW`, proposes articles and links, files gaps |
+| CODA | changes `tools/` and `tests/`, keeps `make test` and `make verify` green |
+| CLERIC | measures owner review time per land, proposes ways to cut it |
 
 Rename freely; the tools only check the id format and the `agents` / `agents_glob` settings.

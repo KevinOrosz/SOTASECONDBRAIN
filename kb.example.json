@@ -2,8 +2,12 @@
   "owner": "owner",
   "title": "Knowledge Base",
   "agents": [
-    "RESEARCHER",
-    "BUILDER"
+    "MAGI",
+    "GURU",
+    "CODA",
+    "CLERIC",
+    "SIGNAL",
+    "PRISM"
   ],
   "agents_glob": "agents/*/soul.md",
   "dashboard": "KB/output/kb-search.html",

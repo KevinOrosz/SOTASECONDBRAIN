@@ -17,14 +17,14 @@ Nothing in the tools names a person, a model, a vendor or a harness. Instance id
 
 **Read in this order:**
 1. `docs/SPEC.md` — **the build spec, canonical.** §0 session plan and E2E acceptance, §1 shared contracts (defined once), P1–P4 per-phase detail, §6 rulings.
-2. `docs/SWARM.md` — the multi-agent doctrine the build runs inside (ORCHESTRATOR orchestrates, RESEARCHER specs, BUILDER builds, AUDITOR audits owner time).
+2. `docs/SWARM.md` — the multi-agent doctrine the build runs inside (MAGI orchestrates, GURU specs, CODA builds, CLERIC audits owner time).
 3. This file — where the build stands.
 4. `docs/RESEARCH.md` — why (SOTA survey, gap analysis). Optional.
 
 ## 2. Rulings (accepted 2026-10-23; do not re-ask)
 
 1. Bold-line `**Key:**` headers in the wiki. No YAML.
-2. The owner lands everything (`--endorsed-by OWNER`). ORCHESTRATOR pre-screens. Gate budget ≤10 min/week.
+2. The owner lands everything (`--endorsed-by OWNER`). MAGI pre-screens. Gate budget ≤10 min/week.
 3. `KB/SYSTEM.md` edits approved once; the exact diff is shown in the session that makes it.
 4. WP1 (wiki hash vs ledger/seal) is WARN through P2-S2, FAIL from P2-S3.
 5. Five `source` type overrides; the 400-word soft article budget ratchets at its captured value; the P3 seed table is accepted.
@@ -93,4 +93,4 @@ Session 8 shipped `tests/test-kb-loop-e2e.py`: on `kb_testkit.fixture(..., regre
 
 ## 7. Session brief template (used 4×)
 
-Give each BUILDER session (any harness, any model at the listed tier): its spec §0 row, spec §1, its phase section, the pre-SHA, and its done-checklist. Use the tier from §4. One mission per session. End with the repo's close step. ORCHESTRATOR verifies the commit against disk before starting the next session.
+Give each CODA session (any harness, any model at the listed tier): its spec §0 row, spec §1, its phase section, the pre-SHA, and its done-checklist. Use the tier from §4. One mission per session. End with the repo's close step. MAGI verifies the commit against disk before starting the next session.

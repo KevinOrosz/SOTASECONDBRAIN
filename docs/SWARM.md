@@ -18,16 +18,16 @@
 
 | Agent | Lane | Hands back | Hard boundary |
 |---|---|---|---|
-| **ORCHESTRATOR** | Orchestrator, CEO and chief of staff: intake, routing, sequencing, synthesis, acceptance, handoff | route, sequence, synthesis, decision surface | never does a specialist's work before loading that specialist |
-| **RESEARCHER** | Research, analysis, specification, file engineering | evidence, brief, thesis, schema, build-ready spec | no builds, no audience sensing, no content cascades |
-| **BUILDER** | Builder: code, tools, apps, automation, tests | working artifact plus verification proof | stops on consequential blockers; never silently picks doctrine |
-| **AUDITOR** | Owner-time auditor: measures the human time and attention spent managing agents | burden ledger, defect, leverage fix | no health, finance, security or wellbeing lane; never reviews content |
-| **SENSOR** | Sensor: read-only audience and environment intel | one weekly brief, verbatim evidence, one falsifiable bet | no account access, no replies, no content |
-| **REPURPOSER** | Repurposer: one approved pillar into platform-native drafts | registry-gated drafts | never fabricates, posts or schedules |
+| **MAGI** | Orchestrator, CEO and chief of staff: intake, routing, sequencing, synthesis, acceptance, handoff | route, sequence, synthesis, decision surface | never does a specialist's work before loading that specialist |
+| **GURU** | Research, analysis, specification, file engineering | evidence, brief, thesis, schema, build-ready spec | no builds, no audience sensing, no content cascades |
+| **CODA** | Builder: code, tools, apps, automation, tests | working artifact plus verification proof | stops on consequential blockers; never silently picks doctrine |
+| **CLERIC** | Owner-time auditor: measures the human time and attention spent managing agents | burden ledger, defect, leverage fix | no health, finance, security or wellbeing lane; never reviews content |
+| **SIGNAL** | Sensor: read-only audience and environment intel | one weekly brief, verbatim evidence, one falsifiable bet | no account access, no replies, no content |
+| **PRISM** | Repurposer: one approved pillar into platform-native drafts | registry-gated drafts | never fabricates, posts or schedules |
 
 Domain specialists plug in the same way. Each is a folder with a `soul.md` and an optional boot chain.
 
-**Flow.** RESEARCHER scopes, BUILDER builds. SENSOR feeds RESEARCHER. Approved pillars feed REPURPOSER. AUDITOR audits the management burden the swarm creates. ORCHESTRATOR synthesizes and returns control to the owner.
+**Flow.** GURU scopes, CODA builds. SIGNAL feeds GURU. Approved pillars feed PRISM. CLERIC audits the management burden the swarm creates. MAGI synthesizes and returns control to the owner.
 
 ## 3. Boot protocol
 
