@@ -61,6 +61,7 @@ Run `bin/kb help` for every command.
 | **WP1 / WP2** | Two lint rules: WP1 = no unrecorded wiki edits; WP2 = inbox files are well-formed. |
 | **regression case** | A saved test (in `evals/regressions.jsonl`) that a past mistake never comes back. Every land must pass them all. |
 | **retrieval eval** | A small hand-written question set checking that search still finds the right pages. |
+| **correction** | An owner's "that answer was wrong", compiled into one gated page diff plus one regression case (`bin/kb correct`). |
 | **graph** | `KB/output/kb-graph.json` — pages, links and sources as a network, for `bin/kb ask`. |
 
 ## Layout
@@ -91,5 +92,6 @@ Any assistant that can run shell commands can propose pages with `bin/kb write p
 
 ## Status
 
-Sessions 1–5 of an 8-session build are done (typed pages, lint, gated write-back, regression suite).
-Next: the correction compiler (`docs/HANDOFF.md` §5). MIT licensed.
+Sessions 1–7 of an 8-session build are done (typed pages, lint, gated write-back, regression suite,
+correction compiler). Try it: `docs/CORRECTION-TUTORIAL.md`. Next: the end-to-end loop test
+(`docs/HANDOFF.md` §5). MIT licensed.

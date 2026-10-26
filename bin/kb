@@ -8,6 +8,7 @@ cmd="${1:-help}"; [ $# -gt 0 ] && shift
 case "$cmd" in
   lint)     exec python3 "$T/kb-lint.py" "$@" ;;
   write)    exec python3 "$T/kb-write.py" "$@" ;;
+  correct)  exec python3 "$T/kb-correct.py" "$@" ;;
   eval)     exec python3 "$T/kb-eval.py" "$@" ;;
   index)    python3 "$T/kb-index.py" "$@" && exec python3 "$T/kb-graph.py" ;;
   graph)    exec python3 "$T/kb-graph.py" "$@" ;;
@@ -26,6 +27,7 @@ usage: bin/kb <command> [args]
   eval      retrieval eval / --regressions FILE            query   keyword search
   search    hybrid search over page bodies                 ask     graph verbs: connect|neighbors|provenance|themes
   doctor    structural health report                       autolink  report unlinked mentions (read-only)
+  correct   owner correction -> gated diff + regression case (kb-correct)
   verify    full health check                              test    run every test suite
 Add --help after any command for its options.
 TXT

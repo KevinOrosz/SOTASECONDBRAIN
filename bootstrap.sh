@@ -58,6 +58,7 @@ else
   say "KB/wiki has pages, kept"
 fi
 [ -f KB/output/retrieval-eval.json ] || cp "$ESRC" KB/output/retrieval-eval.json
+[ -f KB/SYSTEM.md ] || { cp templates/SYSTEM.md KB/SYSTEM.md; say "wrote KB/SYSTEM.md (doctrine)"; }
 [ -f evals/regressions.jsonl ] || { cp templates/regressions.jsonl evals/regressions.jsonl; say "wrote evals/regressions.jsonl"; }
 
 # 4. git (unland restores exact earlier bytes from git history)

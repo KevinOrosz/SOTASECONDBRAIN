@@ -43,6 +43,7 @@
 | `kb-graph.py` | `KB/output/kb-graph.json` | pages, sections, links, sources as a graph |
 | `kb-query.py` | nothing | field-weighted keyword ranker |
 | `kb-graph-query.py` | nothing | hybrid search (BM25 over bodies) + graph verbs |
+| `kb-correct.py` | `KB/inbox/_corrections/`, `evals/regressions.jsonl` (via `landed`) | owner correction → packets, gated diff, proposal, regression case |
 | `kb-eval.py` | nothing | retrieval eval + regression suite |
 | `kb-autolink.py` | nothing | reports unlinked mentions |
 | `brain-doctor.py` | nothing | structural health report |

@@ -17,6 +17,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 TOOLS = Path(__file__).resolve().parent.parent / "tools"
@@ -126,6 +127,139 @@ class Base(unittest.TestCase):
             self.assertEqual(self.cli("record", "C-0001", "judge", "--run", run, "--result", self.fx(
                 {"points": [{"point": "tide pools shelter kelp", "met": v == "PASS", "quote": ""}],
                  "verdict": v}))[0], 0)
+
+
+LONG = " ".join("Zebrafish evidence is recorded in this page body as plain prose sentence %d." % i for i in range(14))
+FIRST_LONG = FIRST_PATCHED.replace("## Connections", LONG + "\n\n## Connections", 1)
+
+
+class TestLand(Base):
+    """Spec P3 §8 tests 9-11 plus the live hook path, on the fixture with a real kb-write."""
+
+    def setUp(self):
+        super().setUp()
+        shutil.rmtree(self.tmp)
+        self.tmp = Path(tempfile.mkdtemp())
+        self.root = kb_testkit.fixture(self.tmp, regressions=True, git=True)
+        (self.root / "KB" / "RAW" / "tides.md").write_text(RAW_TIDES, encoding="utf-8")
+        self.kbw = kb_testkit.load("kb-write.py")
+        self.assertEqual(self.kbw_cli("seal")[0], 0)
+        self.seeded = len(self.cases())
+
+    def kbw_cli(self, *args):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            rc = self.kbw.main(list(args[:1]) + ["--root", str(self.root), "--json"] + list(args[1:]))
+        return rc, json.loads(buf.getvalue() or "{}")
+
+    def validated(self):
+        self.to_reviewed(self.open_retrieval, "KB/wiki/alpha/first.md", FIRST_LONG)
+        rc, out = self.cli("validate", "C-0001")
+        self.assertEqual((rc, out["stage"]), (0, "validated"), out)
+
+    def proposed(self):
+        self.validated()
+        rc, out = self.cli("land", "C-0001")
+        self.assertEqual(rc, 0, out)
+        return out["proposal"]
+
+    def cases(self):
+        p = self.root / "evals" / "regressions.jsonl"
+        return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+    def regressions_rc(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return kbe.main_regressions(mock.Mock(regressions=str(self.root / "evals" / "regressions.jsonl"),
+                                                  check=False, json=False), self.root)
+
+    def test_24_land_with_p2_absent_exits_3_and_writes_nothing(self):
+        self.validated()
+        digest = kb_testkit.tree_digest(self.root / "KB")
+        with mock.patch.object(kbc, "KBW", self.tmp / "absent" / "kb-write.py"):
+            rc, out = self.cli("land", "C-0001")
+        self.assertEqual(rc, 3, out)
+        self.assertEqual(kb_testkit.tree_digest(self.root / "KB"), digest)
+        self.assertEqual(self.rec()["stage"], "validated")
+
+    def test_25_land_files_one_supersede_proposal_and_stops_for_the_owner(self):
+        pid = self.proposed()
+        r = self.rec()
+        self.assertEqual((r["stage"], r["land"]["proposal"]), ("proposed", pid))
+        text = (self.root / "KB" / "inbox" / (pid + ".md")).read_text(encoding="utf-8")
+        for want in ("origin: correction:C-0001", "supersedes: wiki:first", "base_hash: " + r["compile"]["before_sha256"]):
+            self.assertIn(want, text)
+        self.assertEqual(self.cli("land", "C-0001")[0], 2)  # already proposed
+        self.assertEqual(len(self.cases()), self.seeded)  # nothing appended before the owner lands it
+
+    def test_26_land_after_the_page_drifted_exits_2(self):
+        self.validated()
+        page = self.root / "KB/wiki/alpha/first.md"
+        page.write_text(page.read_text(encoding="utf-8") + "\nHand edit.\n", encoding="utf-8")
+        rc, out = self.cli("land", "C-0001")
+        self.assertEqual(rc, 2, out)
+        self.assertIn("drift", out["error"])
+
+    def test_27_hook_appends_exactly_one_case_and_unland_breaks_it(self):
+        pid = self.proposed()
+        before = self.cases()
+        rc, res = self.kbw_cli("land", pid, "--endorsed-by", "owner")
+        self.assertEqual((rc, res.get("hook")), (0, "ok"), res)
+        rows = self.cases()
+        self.assertEqual(len(rows), len(before) + 1)
+        case = rows[-1]
+        self.assertEqual((case["origin"], case["ledger_seq"], case["status"]), ("correction:C-0001", res["ledger_seq"], "active"))
+        self.assertEqual(case["landed_version"], kbc.sha256((self.root / "KB/wiki/alpha/first.md").read_bytes()))
+        self.assertNotEqual(case["landed_version"], case["failing_version"])
+        self.assertEqual(self.rec()["stage"], "landed")
+        self.assertEqual(self.regressions_rc(), 0)
+        rc, out = self.kbw_cli("unland", pid, "--endorsed-by", "owner", "--reason", "discrimination proof")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.regressions_rc(), 1)  # the case now fails: it discriminates
+
+    def test_28_landed_with_a_ledger_hash_mismatch_exits_2_and_appends_nothing(self):
+        pid = self.proposed()
+        with mock.patch.object(self.kbw, "HOOK", self.tmp / "absent" / "kb-correct.py"):
+            rc, res = self.kbw_cli("land", pid, "--endorsed-by", "owner")
+        self.assertEqual(rc, 0, res)
+        page = self.root / "KB/wiki/alpha/first.md"
+        page.write_text(page.read_text(encoding="utf-8") + "\nHand edit after land.\n", encoding="utf-8")
+        before = self.cases()
+        rc, out = self.cli("landed", "C-0001", "--ledger-seq", str(res["ledger_seq"]))
+        self.assertEqual(rc, 2, out)
+        self.assertIn("ledger hash mismatch", out["error"])
+        self.assertEqual(self.cases(), before)
+        self.assertEqual(self.rec()["stage"], "proposed")
+
+    def test_29_landed_rejects_a_row_that_is_not_this_land(self):
+        self.proposed()
+        rc, out = self.cli("landed", "C-0001", "--ledger-seq", "1")  # row 1 is the put
+        self.assertEqual(rc, 2, out)
+        self.assertEqual(self.cli("landed", "C-0001", "--ledger-seq", "99")[0], 2)
+
+    def test_30_landed_is_idempotent(self):
+        pid = self.proposed()
+        rc, res = self.kbw_cli("land", pid, "--endorsed-by", "owner")
+        n = len(self.cases())
+        rc, out = self.cli("landed", "C-0001", "--ledger-seq", str(res["ledger_seq"]))
+        self.assertEqual((rc, out["appended"]), (0, False), out)
+        self.assertEqual(len(self.cases()), n)
+
+    def test_31_replay_all_waits_then_judges_answer_cases(self):
+        rc, out = self.cli("replay-all")
+        self.assertEqual(rc, 2, out)  # packets written, no results yet
+        d = self.root / kbc.CORR / "_replay-all"
+        pk = json.loads((d / "packets" / "replay-r-0004.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(pk), kbc.PACKETS["replay"])
+        (d / "results").mkdir()
+        (d / "results" / "replay-r-0004.md").write_text("An answer.\n", encoding="utf-8")
+        self.assertEqual(self.cli("replay-all")[0], 2)  # now waits on the judge
+        self.assertEqual(set(json.loads((d / "packets" / "judge-r-0004.json").read_text(encoding="utf-8"))),
+                         kbc.PACKETS["judge"])
+        (d / "results" / "judge-r-0004.json").write_text(json.dumps({"points": [], "verdict": "FAIL"}), encoding="utf-8")
+        rc, out = self.cli("replay-all")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("r-0004", out["error"])
+        self.assertEqual(self.cli("replay-all", "--fresh")[0], 2)  # --fresh starts over
 
 
 class TestCorrect(Base):
@@ -350,9 +484,11 @@ class TestCorrect(Base):
         self.assertEqual(rc, 2, out)
         self.assertIn("drift", out["error"])
 
-    def test_22_land_and_landed_wait_for_p3s3(self):
+    def test_22_land_needs_a_validated_correction(self):
+        self.open_raw()
+        self.assertEqual(self.cli("land", "C-0001")[0], 2)  # stage open
         self.assertEqual(self.cli("landed", "C-0001", "--ledger-seq", "1")[0], 2)
-        self.assertEqual(self.cli("land", "C-0001")[0], 2)
+        self.assertEqual(self.cli("landed", "C-0001")[0], 2)  # --ledger-seq is required
 
     def test_23_no_network_or_model_calls(self):
         src = (TOOLS / "kb-correct.py").read_text(encoding="utf-8")

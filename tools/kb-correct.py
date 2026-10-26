@@ -10,13 +10,15 @@ Usage:  python3 tools/kb-correct.py VERB [CID] [--root R] [--json] ...
   validate  CID                         overlays, regressions on the patched overlay, blind replay, verdict
   kill      CID --reason R              any open stage -> killed
   status    [CID]
-  land | landed | replay-all            built in P3-S3; exit 2 until then
+  land      CID                         validated -> kb-write put (supersede, origin correction:CID) -> proposed
+  landed    CID --ledger-seq N          the kb-write land hook: verify ledger + disk, append the case -> landed
+  replay-all [--fresh]                  answer cases (active + dormant) replayed on the live wiki; manual gate
 Exit:   0 ok · 1 gate failed · 2 usage, stage, schema or drift · 3 P2 (tools/kb-write.py) absent.
         kb-write exit codes map in: 3 or 4 -> 1, anything else nonzero -> 2.
 
 Working dir KB/inbox/_corrections/C-NNNN/{record.json, packets/, results/, after.md, diff.patch}. This
             tool writes nothing else, except through kb-write put (contradictory and skill gaps).
-Stages      open -> diagnosed -> compiled -> reviewed -> validated (-> proposed -> landed, P3-S3).
+Stages      open -> diagnosed -> compiled -> reviewed -> validated -> proposed -> landed.
             diagnosed -> flagged (conflict, or reachable-retrieved = skill defect); compiled -> diagnosed
             (review REJECT, attempt 2 on the high tier); reviewed -> failed; any open stage -> killed.
             A gate miss or REJECT on attempt 2 kills. killed/flagged/failed/validated store and print
@@ -32,6 +34,12 @@ Gate        compile result {"files": {path: post-image}}: exactly one existing K
             changed lines, read_meta parses with Type kept, Updated bumped, Core Claim kept, kb-lint 0 FAIL.
 Overlays    base and patched copies in $TMPDIR: KB/wiki, tools/, skills/, RETRIEVAL_FILES, active artifact
             targets; KB/RAW symlinked; KB/inbox excluded; active case origins redacted. Index + graph rebuilt.
+
+Land        `land` never writes the wiki: it files one proposal with kb-write (the owner endorses it there).
+            `landed` is the only writer of the regressions file; it re-reads the ledger row first.
+replay-all  Packets and results live in KB/inbox/_corrections/_replay-all/ (manifest.json, packets/,
+            results/replay-ID.md, results/judge-ID.json). Rerun until no result is pending: 0 all pass,
+            1 any case fails, 2 still waiting. Not a land gate; run it before closing a loop.
 
 Spec: docs/SPEC.md P3 §4-§6 and §1.3-§1.4. Zero LLM calls. Stdlib only, Python 3.9 compatible.
 """
@@ -238,24 +246,30 @@ def emit(root: Path, rec: dict, step: str, run: str = "") -> Path:
 
 # ---------- P2 (kb-write) ----------
 
+def kbw_put(root: Path, rec: dict, what: str, *args: str) -> dict:
+    """One in-process kb-write put for this correction; kb-write exit 3 or 4 -> 1, anything else -> 2."""
+    need(KBW.is_file(), "P2 absent: tools/kb-write.py not found", 3)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        rc = _load("kb-write.py").main(["put", "--root", str(root), "--json", "--agent", rec["agent"],
+                                        "--source-ref", "owner:" + rec["opened"][:10], "--origin",
+                                        "correction:" + rec["cid"], *args])
+    try:
+        out = json.loads(buf.getvalue() or "{}")
+    except ValueError:
+        out = {}
+    need(rc == 0, "kb-write put %s: rc %d %s" % (what, rc, out.get("detail", "")), 1 if rc in (3, 4) else 2)
+    return out
+
+
 def kbw_put_gap(root: Path, rec: dict, gap_kind: str, target: str, why: str) -> str:
     need(KBW.is_file(), "P2 absent: tools/kb-write.py not found", 3)
     body = "# Correction %s: %s\n\n%s\n\nOwner says (verbatim, kept in record.json): see %s.\n" % (
         rec["cid"], rec["q"], why, rec["cid"])
     bf = _write(root, rec["cid"], "gap-%s.md" % gap_kind, body)
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
-        rc = _load("kb-write.py").main(["put", "--root", str(root), "--json", "--agent", rec["agent"],
-                                        "--kind", "gap", "--slug", "correction-%s-%s" % (rec["cid"].lower(), gap_kind),
-                                        "--confidence", "moderate", "--source-ref", "owner:" + rec["opened"][:10],
-                                        "--gap-kind", gap_kind, "--target", target, "--origin",
-                                        "correction:" + rec["cid"], "--body-file", str(bf)])
-    try:
-        out = json.loads(buf.getvalue() or "{}")
-    except ValueError:
-        out = {}
-    need(rc == 0, "kb-write put %s gap: rc %d %s" % (gap_kind, rc, out.get("detail", "")), 1 if rc in (3, 4) else 2)
-    return out.get("id", "")
+    return kbw_put(root, rec, gap_kind + " gap", "--kind", "gap", "--slug",
+                   "correction-%s-%s" % (rec["cid"].lower(), gap_kind), "--confidence", "moderate",
+                   "--gap-kind", gap_kind, "--target", target, "--body-file", str(bf)).get("id", "")
 
 
 # ---------- open / diagnose ----------
@@ -515,8 +529,7 @@ def record_run(root: Path, rec: dict, step: str, run: str, res) -> dict:
     if step == "replay":
         _write(root, rec["cid"], "results/replay-%s.md" % run, res)
         return {"stage": "reviewed", "packets": [str(emit(root, rec, "judge", run))]}
-    shape(isinstance(res, dict) and res.get("verdict") in ("PASS", "FAIL") and isinstance(res.get("points"), list)
-          and all(isinstance(p, dict) and isinstance(p.get("met"), bool) for p in res["points"]), "judge")
+    shape(valid_judge(res), "judge")
     need((cdir(root, rec["cid"]) / "results" / ("replay-%s.md" % run)).is_file(), "judge %s before its replay" % run)
     _write(root, rec["cid"], "results/judge-%s.json" % run, json.dumps(res, ensure_ascii=False, indent=1) + "\n")
     return {"stage": "reviewed", "judged": run}
@@ -681,7 +694,140 @@ def verdict(root: Path, rec: dict, checks: dict, flip: str) -> dict:
     raise Fail(1, "%s failed: %s" % (rec["cid"], ", ".join(k for k, ok in checks.items() if not ok)))
 
 
-# ---------- kill / status / packet / later ----------
+# ---------- land / landed ----------
+
+LEDGER = "KB/inbox/_ledger.jsonl"
+P2_MANAGED = kblint.P2_MANAGED
+
+
+def strip_managed(text: str) -> str:
+    """The page without the header lines kb-write land sets itself (Confidence, Provenance)."""
+    keys = tuple("**%s:**" % k for k in P2_MANAGED)
+    return "\n".join(line for line in text.split("\n") if not line.startswith(keys))
+
+
+def cmd_land(root: Path, a) -> dict:
+    need(KBW.is_file(), "P2 absent: tools/kb-write.py not found; nothing written", 3)
+    rec = load_record(root, a.cid)
+    expect(rec, ("validated",))
+    rel = rec["compile"]["target"]
+    need((root / rel).is_file() and sha256((root / rel).read_bytes()) == rec["compile"]["before_sha256"],
+         "drift: %s changed since compile (before_sha256)" % rel)
+    after = cdir(root, rec["cid"]) / "after.md"
+    need(after.is_file() and sha256(after.read_bytes()) == rec["compile"]["after_sha256"],
+         "drift: after.md changed since compile")
+    meta = kblint.read_meta(root / rel)
+    out = kbw_put(root, rec, "article", "--kind", "article", "--slug", "correction-%s" % rec["cid"].lower(),
+                  "--type", meta["type"] or "article", "--supersedes", "wiki:" + Path(rel).stem,
+                  "--confidence", "moderate", "--body-file", str(after))
+    rec["land"] = {"proposal": out["id"], "put_seq": out["ledger_seq"]}
+    rec["stage"], rec["await"] = "proposed", "land"
+    save(root, rec)
+    return {"cid": rec["cid"], "stage": "proposed", "proposal": out["id"], "path": out["path"],
+            "next": "owner: kb-write land %s --endorsed-by OWNER" % out["id"]}
+
+
+def ledger_row(root: Path, seq: int) -> dict:
+    p = root / LEDGER
+    need(p.is_file(), "no %s" % LEDGER)
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            row = json.loads(line)
+            if row.get("seq") == seq:
+                return row
+    raise Fail(2, "no ledger row %s in %s" % (seq, LEDGER))
+
+
+def write_cases(root: Path, cases: list) -> None:
+    p = kb_config.path(root, "regressions")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text("".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cases), encoding="utf-8")
+    tmp.replace(p)
+
+
+def cmd_landed(root: Path, a) -> dict:
+    need(a.ledger_seq is not None and a.ledger_seq >= 1, "landed needs --ledger-seq N")
+    rec = load_record(root, a.cid)
+    cases = active_cases(root)
+    done = [c for c in cases if c.get("origin") == "correction:" + rec["cid"]
+            and c.get("failing_version") == rec["compile"].get("before_sha256")]
+    if rec["stage"] == "landed" or done:
+        return {"cid": rec["cid"], "stage": "landed", "case": rec["land"].get("case_id") or done[0]["id"], "appended": False}
+    expect(rec, ("proposed",))
+    row, rel = ledger_row(root, a.ledger_seq), rec["compile"]["target"]
+    need(row.get("event") == "land" and row.get("id") == rec["land"].get("proposal")
+         and row.get("origin") == "correction:" + rec["cid"],
+         "ledger row %d is not the land of %s (%s)" % (a.ledger_seq, rec["land"].get("proposal"), rec["cid"]))
+    disk = (root / rel).read_bytes() if (root / rel).is_file() else b""
+    need(disk and row["files"].get(rel) == sha256(disk), "ledger hash mismatch: %s on disk differs from row %d"
+         % (rel, a.ledger_seq))
+    need(strip_managed(disk.decode("utf-8")) == strip_managed((cdir(root, rec["cid"]) / "after.md")
+                                                              .read_text(encoding="utf-8")),
+         "%s on disk is not the validated post-image (outside %s)" % (rel, "/".join(P2_MANAGED)))
+    case = dict(rec["validate"]["case"], landed=date.today().isoformat(), landed_version=sha256(disk),
+                ledger_seq=a.ledger_seq)
+    nums = [int(kbe.ID_RE.match(c["id"]).group(1)) for c in cases if kbe.ID_RE.match(c.get("id", ""))]
+    case["id"] = "r-%04d" % (max(nums or [0]) + 1)
+    bad = kbe.validate_cases(cases + [case])
+    need(not bad, "case invalid: %s" % "; ".join(bad))
+    write_cases(root, cases + [case])
+    rec["land"].update(ledger_seq=a.ledger_seq, case_id=case["id"])
+    rec["stage"], rec["await"] = "landed", None
+    save(root, rec)
+    return {"cid": rec["cid"], "stage": "landed", "case": case["id"], "appended": True}
+
+
+# ---------- replay-all ----------
+
+def valid_judge(res) -> bool:
+    return (isinstance(res, dict) and res.get("verdict") in ("PASS", "FAIL") and isinstance(res.get("points"), list)
+            and all(isinstance(p, dict) and isinstance(p.get("met"), bool) for p in res["points"]))
+
+
+def cmd_replay_all(root: Path, a) -> dict:
+    d = root / CORR / "_replay-all"
+    if a.fresh:
+        shutil.rmtree(d, ignore_errors=True)
+    man = d / "manifest.json"
+    if not man.is_file():
+        cases = [c for c in active_cases(root) if c.get("kind") == "answer" and c.get("status") in ("active", "dormant")]
+        need(cases, "no answer cases (active or dormant) to replay")
+        tmp = Path(tempfile.mkdtemp(prefix="kb-replay-all-"))
+        ov = overlay(root, tmp / "live")
+        d.mkdir(parents=True, exist_ok=True)
+        man.write_text(json.dumps({"overlay": str(ov), "runs": {c["id"]: {
+            "q": c["q"], "points": c["expected"], "forbidden": c["forbidden"], "status": c["status"]} for c in cases}},
+            ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    m = json.loads(man.read_text(encoding="utf-8"))
+    pending, passed, failed = [], [], []
+    for cid, run in m["runs"].items():
+        ans, jf = d / "results" / ("replay-%s.md" % cid), d / "results" / ("judge-%s.json" % cid)
+        if jf.is_file() and ans.is_file():
+            res = json.loads(jf.read_text(encoding="utf-8"))
+            need(valid_judge(res), "judge-%s.json does not match its shape (spec P3 §4)" % cid)
+            ok = res["verdict"] == "PASS" and not forbidden_hit(ans.read_text(encoding="utf-8"), run["forbidden"])
+            (passed if ok else failed).append(cid)
+            continue
+        pk = {"step": "replay", "cid": "replay-all", "run": cid, "q": run["q"], "overlay": m["overlay"]} if not ans.is_file() \
+            else {"step": "judge", "cid": "replay-all", "run": cid, "points": run["points"],
+                  "answer": ans.read_text(encoding="utf-8")}
+        extra = set(pk) - PACKETS[pk["step"]]
+        need(not extra, "packet carries keys outside its whitelist: %s" % sorted(extra))
+        name = d / "packets" / ("%s-%s.json" % (pk["step"], cid))
+        name.parent.mkdir(parents=True, exist_ok=True)
+        name.write_text(json.dumps(pk, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        pending.append(str(name))
+    out = {"cases": len(m["runs"]), "passed": sorted(passed), "failed": sorted(failed), "pending": pending}
+    if pending:
+        raise Fail(2, "replay-all waiting on %d result(s): %s" % (len(pending), ", ".join(pending)))
+    if not failed:
+        shutil.rmtree(Path(m["overlay"]).parent, ignore_errors=True)
+    need(not failed, "replay-all: %d of %d case(s) failed: %s" % (len(failed), len(m["runs"]), ", ".join(sorted(failed))), 1)
+    return out
+
+
+# ---------- kill / status / packet ----------
 
 def cmd_kill(root: Path, a) -> dict:
     rec = load_record(root, a.cid)
@@ -705,13 +851,9 @@ def cmd_packet(root: Path, a) -> dict:
     return {"cid": rec["cid"], "packet": str(emit(root, rec, a.step, a.run or ""))}
 
 
-def cmd_later(root: Path, a) -> dict:
-    raise Fail(2, "%s is built in P3-S3 (spec P3 §12); this core stops at validated" % a.verb)
-
-
 VERB_FN = {"open": cmd_open, "diagnose": cmd_diagnose, "packet": cmd_packet, "record": cmd_record,
            "validate": cmd_validate, "kill": cmd_kill, "status": cmd_status,
-           "land": cmd_later, "landed": cmd_later, "replay-all": cmd_later}
+           "land": cmd_land, "landed": cmd_landed, "replay-all": cmd_replay_all}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -729,6 +871,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--run")
     ap.add_argument("--reason")
     ap.add_argument("--ledger-seq", type=int)
+    ap.add_argument("--fresh", action="store_true")
     return ap
 
 
@@ -737,7 +880,7 @@ def main(argv=None) -> int:
     root = Path(a.root).resolve()
     try:
         need((root / "KB" / "wiki").is_dir(), "%s/KB/wiki not found" % root)
-        if a.verb in ("diagnose", "packet", "record", "validate", "kill"):
+        if a.verb in ("diagnose", "packet", "record", "validate", "kill", "land", "landed"):
             need(a.cid, "%s needs a CID" % a.verb)
         if a.verb in ("packet", "record"):
             need(a.step, "%s needs a STEP" % a.verb)

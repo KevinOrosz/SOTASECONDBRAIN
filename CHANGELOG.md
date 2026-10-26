@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- New: `kb-correct.py land` (validated correction -> `kb-write put --supersedes ... --origin correction:CID`,
+  stage `proposed`), `landed` (the kb-write land hook: checks the ledger row and disk hash, appends exactly
+  one regression case with `landed_version` and `ledger_seq`, idempotent) and `replay-all` (replay/judge
+  packets for every answer case, dormant included; exit 0/1/2).
+- New: `skills/kb-correct.md` (packet-to-tier recipe), `templates/SYSTEM.md` with the Correction Protocol
+  (bootstrap copies it to `KB/SYSTEM.md`), `bin/kb correct`, `docs/CORRECTION-TUTORIAL.md` and fixtures in
+  `examples/correction-walkthrough/`. `tests/test-kb-correct.py` now has 30 tests. No skill registry
+  ships in this package, so there is no registry row.
+
 - New: `tools/kb-correct.py` correction compiler core (build session 6, P3-S2): `open`, `diagnose`,
   `packet`, `record`, `validate`, `kill`, `status` under `KB/inbox/_corrections/C-NNNN/`. Writes packets
   for every LLM step and reads filled results; whitelisted packet keys; deterministic evidence scan,

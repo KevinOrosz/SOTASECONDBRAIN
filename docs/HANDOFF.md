@@ -3,7 +3,7 @@
 > For any builder: a coding agent in any harness, any model, or a human engineer.
 >
 > **Development continues in this package** (`second-brain-loop/`). Sessions 1–5 were built inside a private reference instance and extracted here on 2026-10-26; commit ids in §4 belong to that instance's history, not this repo's. From session 6 on, build, test and commit here.
-> Updated 2026-10-26. Status: DRAFT until the instance owner reviews. Sessions 1–6 done.
+> Updated 2026-10-26. Status: DRAFT until the instance owner reviews. Sessions 1–7 done.
 
 ## 1. What this is
 
@@ -59,8 +59,8 @@ Every key is read through `tools/kb_config.py`. `kb.example.json` lists them all
 | 5 | P3-S1 `kb-eval --regressions`, seeds, block 18, regressions gate on land | mid | DONE | `7ef0302` |
 | 5b | Standalone package: `kb_config.py` path keys, `bootstrap.sh`, `bin/kb`, demo wiki, `scripts/verify.sh` | mid | DONE | this repo's first commit |
 | 6 | P3-S2 `kb-correct.py` core: open/diagnose/packet/record/validate/kill/status, packets, gate, overlays | high | DONE | see `git log` |
-| 7 | **P3-S3** land/landed, correction skill, Correction Protocol, one live correction | mid | **NEXT** | |
-| 8 | LOOP-E2E `tests/test-kb-loop-e2e.py` | high | not started | |
+| 7 | P3-S3 land/landed/replay-all, `skills/kb-correct.md`, Correction Protocol, one live correction | mid | DONE | see `git log` |
+| 8 | LOOP-E2E `tests/test-kb-loop-e2e.py` | high | **NEXT** | |
 
 Tiers are provider-neutral: low / mid / high = any vendor's small / medium / large model.
 
@@ -70,19 +70,19 @@ Tiers are provider-neutral: low / mid / high = any vendor's small / medium / lar
 - Seal covers 602 hashes. Ledger rows 1–6 hold two put→withdraw probes and one full put→land→unland→withdraw round-trip, which left the wiki byte-identical with recall@6 held at 0.745.
 - `test-kb-write.py` 22/22, `test-kb-lint.py` 18/18, `test-kb-eval.py` 11/11, `verify.sh` 0 FAIL (block 18 included).
 
-**Verified state (this package):** `./bootstrap.sh --owner test --demo` then `make verify` → 0 FAIL, 0 WARN; `make test` 7/7 suites green (`test-kb-correct.py` 22, `test-kb-write.py` 23); put → land → unland round-trip on the demo wiki passes.
+**Verified state (this package):** `./bootstrap.sh --owner test --demo` then `make verify` → 0 FAIL, 0 WARN; `make test` 7/7 suites green (`test-kb-correct.py` 30, `test-kb-write.py` 23); put → land → unland round-trip on the demo wiki passes.
 
-## 5. RESUME HERE — session 7 (P3-S3)
+## 5. RESUME HERE — session 8 (LOOP-E2E)
 
-Session 6 shipped `tools/kb-correct.py` (core) and `tests/test-kb-correct.py` (22 tests: spec P3 §8 1–8, 13–19, plus forbidden pre-check, REJECT retry, drift, no-network). Both test runners glob `tests/test-kb-*.py`, so verify step 5 and `make test` run it; verify step 4 is spec block 18's regressions half.
+Session 7 shipped `kb-correct.py land | landed | replay-all`, `skills/kb-correct.md`, `templates/SYSTEM.md` (§ Correction Protocol; bootstrap copies it to `KB/SYSTEM.md`), `bin/kb correct`, `docs/CORRECTION-TUTORIAL.md` with fixtures in `examples/correction-walkthrough/`, and 8 more tests (30 in `tests/test-kb-correct.py`).
 
-**State machine.** `open → diagnosed → compiled → reviewed → validated`. `diagnosed → flagged` (conflict, or reachable-retrieved = skill gap). `compiled → diagnosed` on review REJECT (attempt 2, high tier). A gate miss or REJECT on attempt 2 → `killed`. `reviewed → failed` on a missed verdict check. `kill` from any open stage. killed/flagged/failed/validated store + print one run-log row (`record.json terminal_row`, stderr `RUN-LOG`); `open` refuses while an earlier cid lacks one. Exit 0 ok · 1 gate · 2 usage/stage/schema/drift · 3 P2 absent.
+**Land path.** `validated → land` files one `kb-write put --supersedes wiki:STEM --origin correction:CID` proposal (stage `proposed`; the wiki is untouched). The owner runs `kb-write land ID --endorsed-by OWNER`; the hook runs `landed CID --ledger-seq N`, which checks ledger row N (event land, this proposal and origin), its hash against the page on disk, and the page against `after.md` outside Confidence/Provenance, then appends exactly one case (`landed`, `landed_version`, `ledger_seq`, fresh `r-NNNN` id) and sets stage `landed`. Rerun is a no-op. Failure modes exit 2 and append nothing; a failing hook leaves the land standing (`landed` can be retried).
 
-**Harness loop.** `open --points-file` (split result) → `diagnose` writes `packets/conflict.json` (or `compile.json` when unreachable) → `record CID conflict|compile|review --result F` → `validate` (retrieval label: deterministic flip, done; answer label: writes `replay-{base,patched-1..3,case-r-N}` packets) → `record CID replay|judge --run R` → `validate` again for the verdict. The proven case sits in `record.json validate.case`.
+**Live proof (demo instance, fresh bootstrap).** `marigolds pests`: open → diagnose (`reachable-unretrieved`) → record conflict/compile/review → validate (base miss → patched flip, det green, KEEP) → land → `kb-write land` (hook ok) → regressions 1 → 2 green, exit 0 → `unland` → exit 1 (`FAIL r-0004 … expected stem not in top-10`). The discrimination proof holds.
 
-**P3-S3 builds:** `land` and `landed` (both exit 2 today; kb-write's hook therefore WARNs and the land stands, test `p2s2_08b`), `replay-all`, `skills/kb-correct.md`, row 55, `KB/SYSTEM.md § Correction Protocol`, tests 9–11, one live correction to `proposed`. `landed` appends `validate.case` with `landed`, `landed_version`, `ledger_seq`.
+**Notes for session 8.** (a) `unland` leaves the case in the file, so later lands fail until the proposal is landed again or the case is retired; the tutorial says so. (b) `KB/` must be in git for `unland`; the shipped `.gitignore` excludes it, so demos remove that line. (c) The package ships no `skills/REGISTRY.md`, no `brain-think` skill and no `KB/SYSTEM.md` Write-Back Protocol, so spec P3 row 55 and the Checks-line pointer are not built; `kb_config` still reads an optional registry. (d) `replay-all` is manual and never a land gate. (e) `docs/RESEARCH.md` line 31 still names third-party tools.
 
-**Open notes.** `--owner t` fails bootstrap's owner regex (2–32 chars); briefs should use a 2+ char id. `docs/RESEARCH.md` line 31 names third-party tools in its survey table and trips a broad vendor grep; it predates this session.
+**LOOP-E2E builds** `tests/test-kb-loop-e2e.py` against spec §0 acceptance items 1–N: the whole loop on a throwaway copy, fixture files for model steps, wiki/RAW byte checks, discrimination falsifier.
 
 ## 6. Rules for every session
 
