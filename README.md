@@ -1,52 +1,126 @@
-# second-brain-loop
+# SOTASECONDBRAIN
 
-A personal knowledge base you can trust to grow. It is a folder of Markdown pages plus a few small
-Python tools that check every page, let helpers (people or AI agents) *propose* changes, and let one
-person — you, the **owner** — approve each change. Every approved change is recorded and can be undone.
+**Start here.** This page is the user guide, for people and AI agents alike. Read it top to bottom once; everything else in the repo is reference.
 
-No accounts, no servers, no network, no AI calls inside the tools. Python 3.9+ and git are all you need.
+**In one sentence:** a knowledge base made of plain Markdown files, where anyone (including AI agents) can *suggest* changes, only one person (the **owner**) can *approve* them, every change is logged and undoable, and every fixed mistake gets a test so it can never come back.
 
-## 5-minute quickstart
+**Like you're five:** it's a library with a locked front desk. Anyone can drop a book suggestion in the box. Only the librarian puts books on the shelf. Every book in or out is written in a notebook that can't be erased.
+
+No accounts, no servers, no API keys, no AI calls inside the tools. Works with any AI model and any agent tool.
+
+---
+
+## User guide
+
+### Step 0 · What you need
+
+A Mac or Linux computer with **Python 3.9+**, **git** and **make** (most Macs already have all three). Check:
 
 ```bash
-git clone <this repo> second-brain-loop && cd second-brain-loop
-./bootstrap.sh --owner sam --demo     # your own id: lowercase, 2-32 chars, e.g. "sam"
-make verify                           # should end with: RESULT: 0 fail(s), 0 warn(s)
-make test                             # every suite PASS, the end-to-end loop test last
-bin/kb query "composting"                # search the demo wiki
-open KB/output/kb-search.html         # or open the file in any browser
+python3 --version && git --version && make --version | head -1
 ```
 
-Leave out `--demo` to start with a single welcome page instead of the example wiki.
-`bootstrap.sh` is safe to run again; it never overwrites a file that exists.
+### Step 1 · Get the code
 
-## Daily use
+```bash
+git clone https://github.com/KevinOrosz/SOTASECONDBRAIN.git
+cd SOTASECONDBRAIN
+```
 
-1. **Collect.** Drop source material (notes, clippings, transcripts) into `KB/RAW/` as `.md` files.
-2. **Propose.** Write a draft page and put it in the inbox:
-   ```bash
-   bin/kb write put --agent GURU --kind article --slug mulching --category gardening \
-     --type article --confidence moderate --source-ref raw:soil-notes.md --body-file draft.md
-   ```
-   The draft needs a `# Title`, a `## Core Claim` section and at least 100 words.
-   No draft yet? This makes a valid one (title, Core Claim, 100+ words):
-   ```bash
-   python3 -c "print('# Mulching\n\n## Core Claim\nMulch keeps soil moist and cool.\n\n## Evidence\n' + 'Mulch slows evaporation and smothers weeds in summer beds. ' * 12)" > draft.md
-   ```
-3. **Review.** `bin/kb write list` shows open proposals and their IDs (`AGENT/YYYY-MM-DD-slug`). Read the file under `KB/inbox/`.
-4. **Approve (land)** or decline:
-   ```bash
-   make land ID=GURU/2026-10-26-mulching
-   bin/kb write reject GURU/2026-10-26-mulching --reason "too thin" --by sam
-   ```
-   Landing writes the page, updates the indexes, rebuilds search, and re-runs every check. If any
-   check fails, everything is put back exactly as it was.
-5. **Undo** a land: `make unland ID=... REASON="why"`.
-6. **Check health** any time: `make verify`.
+(Private repo: you need an invite from the repo owner first. Accept it from your email or github.com.)
 
-Run `bin/kb help` for every command.
+### Step 2 · Test drive in a sandbox (recommended)
 
-## Concepts (one line each)
+```bash
+make sandbox
+```
+
+This copies everything to a throwaway temp folder, loads a demo wiki, and runs every check. It prints the folder path. Go there and try Steps 5 to 8 safely. Your real folder is never touched. Delete the sandbox with the `rm -rf` line it prints.
+
+### Step 3 · Set up your own brain
+
+Pick a short lowercase name for yourself. That makes you the owner, the only one who can approve changes.
+
+```bash
+./bootstrap.sh --owner sam
+```
+
+Add `--demo` if you want sample pages to play with. Running it twice is safe.
+
+### Step 4 · Check it's healthy
+
+```bash
+make verify
+```
+
+You want to see `RESULT: 0 fail(s)`.
+
+### Step 5 · Add knowledge
+
+- Put source material (notes, transcripts, articles) in `KB/RAW/`.
+- Wiki pages live in `KB/wiki/<category>/<page>.md`. They are plain Markdown. Edit them in any editor or open the folder in Obsidian.
+
+### Step 6 · Ask it something
+
+```bash
+bin/kb query "your question"
+```
+
+It lists the pages that answer it best. Open the search page at `KB/output/kb-search.html` in a browser for the same thing with a search box.
+
+### Step 7 · Let agents suggest changes
+
+An agent (or a person) writes a proposal into the inbox. It never edits the wiki directly.
+
+```bash
+bin/kb write put --agent GURU --kind article --slug mulching --category gardening \
+  --type article --confidence moderate --source-ref raw:soil-notes.md --body-file draft.md
+```
+
+To have an AI agent do this for you, open this folder in your agent tool (Claude Code, Codex, Cursor or any other). It loads `AGENTS.md` automatically, which sends it here first. Then say: *"Propose a page about X."*
+
+### Step 8 · Review and approve
+
+```bash
+bin/kb write list                                  # see what's waiting
+make land ID=GURU/2026-10-26-mulching              # approve: it enters the wiki
+make unland ID=GURU/2026-10-26-mulching REASON="not right"   # undo it
+```
+
+Use the real ID from `bin/kb write list`. Reject a proposal with `bin/kb write reject ID --reason "why" --by <you>`.
+
+### Step 9 · Fix a wrong answer for good
+
+When the brain answers something wrong, follow **`docs/CORRECTION-TUTORIAL.md`**. The fix lands as a reviewed edit plus a regression test, and every future change must pass that test.
+
+### Step 10 · Stay healthy
+
+```bash
+make status    # what's waiting + health check
+make verify    # full check
+git pull       # get updates to the tools
+```
+
+### If something goes wrong
+
+| You see | Do this |
+|---|---|
+| `RESULT: FAIL` from `make verify` | Read the `[FAIL]` line above it. It names the file and the fix. |
+| `--endorsed-by ... is required` | Only the owner approves. Use the name you gave `bootstrap.sh`. |
+| `agent ... is not a registered agent` | Add the agent's name to `agents` in `KB/kb.json`. |
+| A land exits with code 3 | A safety check failed and the change was rolled back. Nothing broke. Read the message. |
+
+---
+
+## Reference
+
+### What's in the box
+
+- **Your brain** (created by `bootstrap.sh`, never uploaded to git): `KB/wiki/` pages, `KB/RAW/` sources, `KB/inbox/` proposals plus the ledger, `KB/kb.json` settings, `evals/` regression tests.
+- **The tools:** `bin/kb` (one command for everything), `make` shortcuts, `tools/` (plain Python, standard library only).
+- **The docs:** `docs/AGENTS.md` (how agents work here), `docs/SWARM.md` (the multi-agent doctrine), `docs/ARCHITECTURE.md` (how the pieces connect), `docs/CORRECTION-TUTORIAL.md`, `docs/SPEC.md` (the full build spec), `docs/HANDOFF.md` (build status).
+
+### Concepts (one line each)
 
 | Term | Meaning |
 |---|---|
@@ -69,7 +143,7 @@ Run `bin/kb help` for every command.
 | **correction** | An owner's "that answer was wrong", compiled into one gated page diff plus one regression case (`bin/kb correct`). |
 | **graph** | `KB/output/kb-graph.json` — pages, links and sources as a network, for `bin/kb ask`. |
 
-## Layout
+### Layout
 
 ```
 bin/kb             one command for everything        tools/       the Python tools (stdlib only)
@@ -83,19 +157,19 @@ KB/  evals/        your instance (created by bootstrap; ignored by git)
 Your instance (`KB/`, `evals/`) is listed in `.gitignore`, so updating the package never touches
 your notes. Want your notes versioned? Keep `KB/` in its own git repo, or remove it from `.gitignore`.
 
-## Settings
+### Settings
 
 `KB/kb.json` (created from `kb.example.json`). Every key is optional:
 `owner`, `agents`, `agents_glob`, `dashboard`, `regressions`, `baseline`, `catalog`, `registry`,
 `router`, `spine`. See `docs/HANDOFF.md` §3 for what each does.
 
-## Using it with AI agents
+### Using it with AI agents
 
 Any assistant that can run shell commands can propose pages with `bin/kb write put` and never touch
 `KB/wiki` directly. See `docs/AGENTS.md` for how to give an agent its role and rules, and
 `docs/ARCHITECTURE.md` for how the pieces connect.
 
-## What you have now
+### What you have now
 
 After the quickstart you have a working, checked knowledge base:
 
@@ -106,7 +180,7 @@ After the quickstart you have a working, checked knowledge base:
 - **Proof the loop closes.** `tests/test-kb-loop-e2e.py` (last in `make test` and `make verify`) runs a
   correction end to end on a throwaway copy, then undoes the fix and checks that its case now fails.
 
-## Next steps
+### Next steps
 
 1. **Make it yours.** Run `./bootstrap.sh --owner YOURID` without `--demo` in a fresh copy, or keep the demo
    and add pages. Drop your notes into `KB/RAW/`.
@@ -116,7 +190,7 @@ After the quickstart you have a working, checked knowledge base:
 4. **Hand it to an agent.** Give an assistant `docs/AGENTS.md` and let it propose; you stay the only lander.
 5. **Check it weekly.** `make verify` should stay at 0 fail(s).
 
-## Status
+### Status
 
 Version 0.2.0. The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
 correction compiler, end-to-end loop test) is complete. Further phases wait until three real corrections
