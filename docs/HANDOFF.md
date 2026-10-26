@@ -35,6 +35,7 @@ Nothing in the tools names a person, a model, a vendor or a harness. Instance id
 | Key | Meaning | Default |
 |---|---|---|
 | `owner` | The one human id that endorses lands, rejects and resolves. Lowercase `^[a-z][a-z0-9_-]{1,31}$`. Also accepted as an alias of the `owner:` source-ref prefix, so pre-config history stays valid. | `owner` |
+| `title` | Name shown in the search dashboard header. | `Knowledge Base` |
 | `agents` | Extra agent ids allowed to write to the inbox. Uppercase. | `[]` |
 | `agents_glob` | Pattern whose matches' parent folder names are agent ids. Set `""` to disable. | `agents/*/soul.md` |
 | `dashboard` | Where `kb-index` writes the search page. | `KB/output/kb-search.html` |

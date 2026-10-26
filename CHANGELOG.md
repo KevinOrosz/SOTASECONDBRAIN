@@ -2,6 +2,8 @@
 
 ## 0.1.0 — 2026-10-26
 
+- Dashboard title comes from `title` in kb.json (default "Knowledge Base"); no name is hard-coded.
+
 - Extracted from a private reference instance (build sessions 1–5): typed wiki pages + `kb-lint`,
   gated write-back with hash ledger (`kb-write`), retrieval eval + regression suite (`kb-eval`),
   search index, knowledge graph, hybrid search, doctor, autolink report.

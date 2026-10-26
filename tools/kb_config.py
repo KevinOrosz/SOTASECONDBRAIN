@@ -12,6 +12,7 @@ from pathlib import Path
 CONFIG = "KB/kb.json"
 DEFAULTS = {
     "owner": "owner",                                # the one human id that endorses lands (lowercase)
+    "title": "Knowledge Base",                       # shown in the search dashboard header
     "agents": [],                                    # extra agent ids (UPPERCASE) allowed to propose
     "agents_glob": "agents/*/soul.md",               # each match's parent folder name is an agent id
     "dashboard": "KB/output/kb-search.html",         # kb-index writes the search page here

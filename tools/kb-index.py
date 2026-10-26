@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
+import html  # noqa: E402
 import kb_config  # noqa: E402
 
 
@@ -111,7 +112,7 @@ def build(root: Path = ROOT) -> int:
     )
 
     DASH.parent.mkdir(parents=True, exist_ok=True)
-    DASH.write_text(dashboard_html(index), encoding="utf-8")
+    DASH.write_text(dashboard_html(index, kb_config.load(root).get("title", "Knowledge Base")), encoding="utf-8")
 
     print(f"parsed:   {len(articles)} articles, {len(errors)} errors")
     for e in errors:
@@ -122,7 +123,7 @@ def build(root: Path = ROOT) -> int:
     return 0 if not errors else 1
 
 
-def dashboard_html(index: dict) -> str:
+def dashboard_html(index: dict, title: str = "Knowledge Base") -> str:
     data = json.dumps(
         [
             {k: a[k] for k in ("stem", "category", "path", "title", "claim", "updated", "sources", "links", "words")}
@@ -170,7 +171,7 @@ def dashboard_html(index: dict) -> str:
   .empty{color:var(--mut);padding:40px;text-align:center;font-style:italic}
   @media(max-width:760px){main{grid-template-columns:1fr}#list{max-height:38vh}}
 </style></head><body>
-<header><h1>KEVIN OROSZ — KB SEARCH <small>· """ + str(index["article_count"]) + """ articles · generated """ + index["generated"] + """ · read-only</small></h1></header>
+<header><h1>""" + html.escape(title.upper()) + """ — SEARCH <small>· """ + str(index["article_count"]) + """ articles · generated """ + index["generated"] + """ · read-only</small></h1></header>
 <div class="bar"><input id="q" type="search" placeholder="search title, claim, category, slug — space = AND" autofocus>
 <div id="chips"></div></div>
 <div id="count"></div>
