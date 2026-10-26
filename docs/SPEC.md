@@ -158,7 +158,7 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 ```
 
 **Layout rules.**
-- P2 declares the `_` exemption. WP2's stray-file check skips exactly `_seal.json`, `_ledger.jsonl` and `_corrections/`.
+- P2 declares the `_` exemption. WP2's stray-file check skips exactly the reserved names in `kb-write.py` (`RESERVED_FILES`, `RESERVED_DIRS`: `_seal.json`, `_ledger.jsonl`, `.lock`, `_corrections/`, `_objects/`, `_ops/`).
 - Slug matches `^[a-z0-9]+(-[a-z0-9]+)*$`, max 60 chars. On collision, append `-2`.
 - Frontmatter is a flat YAML subset. An unknown key is a WP2 violation.
 
@@ -178,7 +178,7 @@ KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md      # AGENT = a registered agent id (KB
 - **Link:** `link_from`, `link_to`, `link_type` (must be in `kb-graph.json["type_vocabulary"]`, else `{RELATES_TO}`), `prose` (≥3 chars).
 - **Tool-set only:** `endorsed_by`, `decided_at`, `landed_path`, `reason`.
 
-**Ledger events.** One canonical enum: `put|withdraw|reject|land|unland|resolve|adopt|reseal`. Row shape:
+**Ledger events.** One canonical enum, `LEDGER_EVENTS` in `kb-write.py` (today `put|withdraw|reject|land|unland|resolve|adopt|reseal|recover`). Row shape:
 ```json
 {"seq":14,"ts":"2026-10-24T09:12:03","event":"land","id":"GURU/2026-10-24-x","actor":"owner","origin":"correction:C-0001",
  "files":{"KB/wiki/topic/x.md":"<sha256>"},"prior":{"KB/wiki/topic/x.md":null},"resolved":[],"reason":""}
@@ -508,16 +508,16 @@ Exit codes:
     - **`kb-eval --regressions` returns 0** on deterministic cases, if the jsonl exists
     - kb-lint reports 0 FAIL
 
-    On failure: restore every captured file, delete new files, exit 3. The test seam is env `KB_WRITE_FAULT=postcheck`, read only inside the post-check function and documented in the docstring.
+    On failure: restore every captured file, delete new files, exit 3. The test seam is env `KB_WRITE_FAULT=postcheck`; `KB_WRITE_FAULT=<point>` (`FAULT_POINTS`) simulates a crash at that boundary. Both are documented in the kb-write docstring (Recovery).
 11. Commit:
     - append a `land` row with post-write hashes and `resolved:[ids]`
     - append one `resolve` row per gap
     - set the proposal to `landed`
     - unlock
-12. If origin is `correction:CID`, call `kb-correct.py landed CID --ledger-seq N`. If the hook fails: WARN, the land stands, and `landed` can be retried.
+12. If origin is `correction:CID`, call `kb-correct.py landed CID --ledger-seq N`. The hook runs inside the land's journaled op: if it fails, the whole land rolls back (exit 3), so a correction never enters the wiki without its regression case.
 
 **unland, adopt, reseal**
-- **unland:** restore prior bytes from `git show HEAD:<path>`, or delete the file if prior was null. Reverse the count bumps and the edge row, rebuild, append `unland`, and reopen the proposal.
+- **unland:** restore prior bytes from the preimage store `KB/inbox/_objects/<sha256>` (git history only as the fallback for older instances), or delete the file if prior was null. Reverse the count bumps and the edge row, rebuild, append `unland`, and reopen the proposal.
 - **adopt / reseal:** hash the given paths and append one event with the reason.
 
 **Producer**

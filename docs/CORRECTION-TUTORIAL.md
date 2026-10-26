@@ -27,7 +27,6 @@ A retrieval correction needs no replay: the tool ranks the base and the patched 
 **The owner lands it.** Read `KB/inbox/sam/…-correction-c-0001.md`, then:
 
 ```bash
-git add -A && git commit -qm "stage proposal"     # unland needs the prior bytes in history
 bin/kb write land sam/2026-10-26-correction-c-0001 --endorsed-by sam
 ```
 

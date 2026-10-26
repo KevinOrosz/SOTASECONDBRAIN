@@ -199,6 +199,19 @@ def tree_digest(path: Path) -> str:
     return h.hexdigest()
 
 
+def state_digest(root: Path) -> dict:
+    """rel -> sha256 of every file under KB/ and evals/, minus what recovery itself owns (the ledger,
+    _objects/, _ops/): equal before an op and after its rollback means byte-identical restored state."""
+    skip = ("KB/inbox/_ledger.jsonl", "KB/inbox/_objects/", "KB/inbox/_ops/")
+    out = {}
+    for top in ("KB", "evals"):
+        for p in sorted((Path(root) / top).rglob("*")):
+            rel = p.relative_to(root).as_posix()
+            if p.is_file() and not rel.startswith(skip):
+                out[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
+    return out
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")

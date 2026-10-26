@@ -18,6 +18,7 @@ Usage:  python3 tools/kb-write.py VERB [--root R] [--json] ...
   unland ID --reason R --endorsed-by OWNER            undo one land and reopen its proposal
 Exit:   0 ok · 1 usage or IO · 2 contract violation · 3 post-check failed, rolled back · 4 conflict
         (duplicate open proposal, seal exists, existing stem, stale base_hash, changed since land) · 5 lock held
+        · 9 simulated crash (KB_WRITE_FAULT test seam only; the next invocation recovers)
 JSON:   success {"ok":true,"verb","id","path","ledger_seq"} · error {"error","detail"}
         · list {"ok":true,"verb":"list","items":[{... "origin","proposed_at"}]}
 
@@ -26,7 +27,8 @@ docstring + the constants below. kb-lint WP1/WP2 import them; nothing else redef
 
 Layout      KB/inbox/{AGENT}/{YYYY-MM-DD}-{slug}.md — AGENT = a registered agent id or the owner id
             (both from KB/kb.json, see config()). Slug ^[a-z0-9]+(-[a-z0-9]+)*$, max 60 chars; a taken name gets -2, -3, ...
-            Reserved: _seal.json, _ledger.jsonl, .lock, _corrections/. Anything else is a WP2 stray.
+            Reserved: _seal.json, _ledger.jsonl, .lock, _corrections/, _objects/, _ops/. Anything else
+            is a WP2 stray.
 Inbox file  '---', flat YAML subset ('key: value' per line; lists and quoted scalars are JSON), '---',
             body. Keys = COMMON_KEYS + KIND_KEYS[kind] + TOOL_KEYS; any other key is a WP2 violation.
 source_refs raw:<path under KB/RAW> · wiki:<known target> · output:<path under output/ or KB/output/>
@@ -38,7 +40,8 @@ dedupe_key  sha256(kind|gap_kind|target|norm(title))[:12]. target = category/ste
 Ledger      KB/inbox/_ledger.jsonl, append-only, never git-reverted. seq runs 1, 2, 3 ... One row per
             event: {"seq","ts","event","id","actor","origin","files","prior","resolved","reason"};
             files/prior map root-relative paths to sha256, null = absent. A KB/wiki path's expected
-            hash is its last ledger files entry, else its _seal.json entry (WP1). The put row is an
+            hash is its last ledger files entry, else its _seal.json entry (WP1). Rows are never edited;
+            only recover truncates, and only the rows an unfinished op appended. The put row is an
             inbox file's provenance trace; tools never write run-log rows. A land row whose origin is
             correction:CID also carries "hook_skipped" when tools/kb-correct.py is absent.
 Writes      only through _write(root, rel, data, verb), checked against ALLOW; tmp file + os.replace,
@@ -58,12 +61,23 @@ land        Preflight (exit 2 unless): open, not a gap, seal present, WP1 clean 
             every captured byte and exits 3; env KB_WRITE_FAULT=postcheck forces one (test seam, read
             only in postcheck). Then: land row, a resolve row per gap, proposal state landed. A
             correction:CID origin calls tools/kb-correct.py landed CID --ledger-seq N --root R after
-            the row; a failing hook WARNs and the land stands. --dry-run prints a unified diff per
-            staged file + one JSON summary with the post-check plan, writes nothing.
-unland      Per file the land row wrote: untouched since and its prior bytes known (null, or a commit
-            in git whose sha256 matches) -> exact restore; else the page exits 4 and an index, catalog
-            or edge-type file gets the land's edits reversed in place. Rebuild, kb-graph --check,
-            kb-lint 0 FAIL (miss -> exit 3), unland row, proposal back to open.
+            the row, inside the op: a failing hook rolls the whole land back (exit 3), so no correction
+            enters the wiki without its regression case. --dry-run prints a unified diff per staged
+            file + one JSON summary with the post-check plan, writes nothing.
+unland      Per file the land row wrote: untouched since and its prior bytes known (null, the object
+            _objects/<sha256>, else a commit in git whose sha256 matches) -> exact restore; else the
+            page exits 4 and an index, catalog or edge-type file gets the land's edits reversed in
+            place. Rebuild, kb-graph --check, kb-lint 0 FAIL (miss -> exit 3), unland row, proposal
+            back to open.
+Recovery    Preimages: land and unland store every touched file's prior bytes, write-once, at
+            KB/inbox/_objects/<sha256> (hash verified on read; git is only the fallback for instances
+            older than _objects). Journal: each land/unland writes KB/inbox/_ops/<op>.json first
+            {"op","verb","id","last","ledger_size","files":{rel:{"pre","post"}},"steps"} and marks
+            FAULT_POINTS as it passes them; the file is removed when the op ends. Every kb-write and
+            kb-correct invocation first runs recover: an op whose last step is marked and whose files
+            all sit at their post hashes is completed, any other is rolled back (files to their pre
+            bytes, ledger truncated to ledger_size); either way one recover row. KB_WRITE_FAULT=<point>
+            dies at that boundary leaving the journal (exit 9, test seam).
 
 Spec: docs/second-brain-loop/SPEC.md §1.3 + P2. Zero LLM calls.
 Stdlib only, Python 3.9 compatible.
@@ -106,7 +120,9 @@ SEAL = INBOX + "/_seal.json"
 LEDGER = INBOX + "/_ledger.jsonl"
 LOCK = INBOX + "/.lock"
 RESERVED_FILES = ("_seal.json", "_ledger.jsonl", ".lock")
-RESERVED_DIRS = ("_corrections",)
+OBJECTS = INBOX + "/_objects"  # content-addressed preimages
+OPS = INBOX + "/_ops"  # durable operation journals
+RESERVED_DIRS = ("_corrections", "_objects", "_ops")
 MASTER = "KB/wiki/_index.md"
 CATALOG = kb_config.DEFAULTS["catalog"]  # rebound per root by configure()
 EDGE_TYPES = "KB/output/kb-edge-types.json"
@@ -114,11 +130,12 @@ DERIVED = ("KB/output/kb-index.json", "KB/output/content-seeds.json", "KB/output
            kb_config.DEFAULTS["dashboard"])  # kb-index + kb-graph rebuild these after land and unland
 REGRESSIONS = kb_config.DEFAULTS["regressions"]  # the post-check skips the gate while the file is absent
 HOOK = TOOLS / "kb-correct.py"  # P3; correction: lands call it after the ledger row
-FAULT_ENV = "KB_WRITE_FAULT"  # =postcheck forces a post-check failure (test seam, read only in postcheck)
+FAULT_ENV = "KB_WRITE_FAULT"  # =postcheck forces a post-check failure; =<FAULT_POINTS> a crash (test seam)
+FAULT_POINTS = ("after-page", "after-derived", "after-ledger", "after-proposal", "after-case")
 LAND_WORDS = (100, 200, 400)  # body words: under the first exits 2; outside the other two WARNs
 
 VERBS = ("put", "link", "withdraw", "reject", "resolve", "list", "seal", "land", "unland")
-LEDGER_EVENTS = ("put", "withdraw", "reject", "land", "unland", "resolve", "adopt", "reseal")
+LEDGER_EVENTS = ("put", "withdraw", "reject", "land", "unland", "resolve", "adopt", "reseal", "recover")
 EVENT_STATE = {"put": "open", "withdraw": "withdrawn", "reject": "rejected", "land": "landed",
                "unland": "open", "resolve": "resolved"}
 ALLOW = {  # verb -> root-relative dir prefixes (trailing /) or exact files it may write
@@ -132,7 +149,7 @@ ALLOW = {  # verb -> root-relative dir prefixes (trailing /) or exact files it m
     "seal": (SEAL,),
     "adopt": (LEDGER,),
     "reseal": (LEDGER,),
-}
+}  # recover = land's allowlist + the regressions file (configure() sets both)
 
 KINDS = ("article", "gap", "link")
 STATES = ("open", "landed", "withdrawn", "rejected", "resolved")
@@ -182,6 +199,7 @@ def configure(root: Path) -> None:
     REGRESSIONS = kb_config.rel(root, "regressions")
     for verb in ("land", "unland"):
         ALLOW[verb] = ("KB/wiki/", CATALOG, EDGE_TYPES) + DERIVED + (INBOX + "/",)
+    ALLOW["recover"] = ALLOW["land"] + (REGRESSIONS,)
 
 
 def owner(root: Path) -> str:
@@ -433,7 +451,7 @@ def locked(root: Path):
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
     except FileExistsError:
         raise Fail(5, "lock held", "%s exists: another kb-write is running, or one crashed (remove it only "
-                                   "once none runs)" % LOCK)
+                                   "once none runs; the next run recovers its op)" % LOCK)
     try:
         os.write(fd, str(os.getpid()).encode("ascii"))
         os.close(fd)
@@ -960,10 +978,6 @@ def file_hash(root: Path, rel: str):
     return sha256(p.read_bytes()) if p.is_file() else None
 
 
-def snapshot(root: Path, rels) -> dict:
-    return {rel: (root / rel).read_bytes() if (root / rel).is_file() else None for rel in rels}
-
-
 def git_bytes(root: Path, rel: str, digest: str):
     """rel's bytes with this sha256 from the last 50 commits that touched it; None when git has none."""
     def git(*args):
@@ -978,6 +992,119 @@ def git_bytes(root: Path, rel: str, digest: str):
         if data is not None and sha256(data) == digest:
             return data
     return None
+
+
+# ---------- recovery: preimages + operation journal ----------
+
+class Crash(BaseException):
+    """KB_WRITE_FAULT=<point>: the op dies at that boundary, journal left in place (test seam). A
+    BaseException so no in-process rollback catches it."""
+
+
+def put_object(root: Path, data: bytes, verb: str) -> str:
+    """Store data at _objects/<sha256>, write-once (a copy failing its hash is replaced)."""
+    digest = sha256(data)
+    rel = "%s/%s" % (OBJECTS, digest)
+    if file_hash(root, rel) != digest:
+        _write(root, rel, data, verb)
+    return digest
+
+
+def get_object(root: Path, digest: str):
+    p = root / OBJECTS / digest
+    if p.is_file():
+        data = p.read_bytes()
+        if sha256(data) == digest:
+            return data
+    return None
+
+
+def prior_bytes(root: Path, rel: str, digest: str):
+    """rel's bytes with this sha256: the preimage store first, git for instances older than _objects."""
+    data = get_object(root, digest)
+    return data if data is not None else git_bytes(root, rel, digest)
+
+
+class Op:
+    """One journaled land/unland. Every touched file's preimage is stored before the first write."""
+
+    def __init__(self, root: Path, verb: str, pid: str, rels, last: str):
+        self.root, self.verb = root, verb
+        oid = "%s-%d" % (datetime.now().strftime("%Y%m%dT%H%M%S%f"), os.getpid())
+        self.rel = "%s/%s.json" % (OPS, oid)
+        files = {}
+        for rel in sorted(set(rels)):
+            p = root / rel
+            files[rel] = {"pre": put_object(root, p.read_bytes(), verb) if p.is_file() else None, "post": None}
+        lp = root / LEDGER
+        self.j = {"op": oid, "verb": verb, "id": pid, "last": last, "ledger_size": lp.stat().st_size
+                  if lp.is_file() else 0, "files": files, "steps": []}
+        self.save()
+
+    def save(self) -> None:
+        _write(self.root, self.rel, (json.dumps(self.j, indent=1) + "\n").encode("utf-8"), self.verb)
+
+    def pre(self, rel: str):
+        return self.j["files"][rel]["pre"]
+
+    def step(self, name: str) -> None:
+        for rel, f in self.j["files"].items():
+            f["post"] = file_hash(self.root, rel)
+        self.j["steps"].append(name)
+        self.save()
+        if os.environ.get(FAULT_ENV) == name:
+            raise Crash(name)
+
+    def abort(self) -> None:
+        restore(self.root, self.j, self.verb)
+        self.done()
+
+    def done(self) -> None:
+        _write(self.root, self.rel, None, self.verb)
+
+
+def restore(root: Path, j: dict, verb: str) -> dict:
+    """Put every journaled file back to its pre bytes and drop ledger rows past ledger_size. Idempotent.
+    Returns rel -> the hash it held before the restore, for the files that moved."""
+    moved = {}
+    for rel, f in sorted(j["files"].items()):
+        cur = file_hash(root, rel)
+        if cur == f["pre"]:
+            continue
+        data = None if f["pre"] is None else get_object(root, f["pre"])
+        need(f["pre"] is None or data is not None, "op %s: preimage %s of %s missing from %s"
+             % (j["op"], f["pre"], rel, OBJECTS), 2, "recover failed")
+        _write(root, rel, data, verb)
+        moved[rel] = cur
+    lp = root / LEDGER
+    if lp.is_file() and lp.stat().st_size > j["ledger_size"]:
+        _write(root, LEDGER, lp.read_bytes()[:j["ledger_size"]], verb)
+    return moved
+
+
+def recover(root: Path) -> list:
+    """Finish or roll back every unfinished op left in _ops/, one recover ledger row each."""
+    d = root / OPS
+    if not d.is_dir() or not any(d.glob("*.json")):
+        return []
+    out = []
+    with locked(root):
+        for p in sorted(d.glob("*.json")):
+            rel = p.relative_to(root).as_posix()
+            j = json.loads(p.read_text(encoding="utf-8"))
+            if j["last"] in j["steps"] and all(file_hash(root, r) == f["post"] for r, f in j["files"].items()):
+                action, files, prior = "completed", {}, {}
+            else:
+                moved = restore(root, j, "recover")
+                action = "rolled back"
+                files, prior = {r: j["files"][r]["pre"] for r in moved}, moved
+            step = j["steps"][-1] if j["steps"] else "start"
+            seq = append_ledger(root, "recover", "recover", j["id"], "kb-write", "", files, prior,
+                                reason="%s %s op %s after %s" % (action, j["verb"], j["op"], step))
+            _write(root, rel, None, "recover")
+            out.append({"op": j["op"], "verb": j["verb"], "id": j["id"], "action": action, "step": step,
+                        "ledger_seq": seq})
+    return out
 
 
 def postcheck(root: Path, verb: str, base) -> list:
@@ -1020,19 +1147,21 @@ def postcheck(root: Path, verb: str, base) -> list:
     return notes
 
 
-def apply(root: Path, verb: str, staged: dict, base):
-    """Write staged files, rebuild, post-check. Any miss restores every captured byte and exits 3.
-    Returns (captured prior bytes, post-check notes)."""
-    saved = snapshot(root, list(staged) + [d for d in DERIVED if d not in staged])
-    try:
-        for rel, data in staged.items():
-            _write(root, rel, data, verb)
-        return saved, postcheck(root, verb, base)
-    except Exception as e:  # any miss after the first byte moved: put every byte back
-        for rel, data in saved.items():
-            _write(root, rel, data, verb)
-        detail = e.detail if isinstance(e, Fail) else "%s: %s" % (type(e).__name__, e)
-        raise Fail(3, "post-check failed", detail + "; rolled back")
+def apply(root: Path, verb: str, staged: dict, base, op: Op) -> list:
+    """Write staged files, rebuild, post-check, marking after-page and after-derived. Returns the notes."""
+    for rel, data in staged.items():
+        _write(root, rel, data, verb)
+    op.step("after-page")
+    notes = postcheck(root, verb, base)
+    op.step("after-derived")
+    return notes
+
+
+def rolled_back(op: Op, e: Exception) -> Fail:
+    """Any miss after the op began: every journaled byte back, ledger rows dropped, exit 3."""
+    op.abort()
+    detail = e.detail if isinstance(e, Fail) else "%s: %s" % (type(e).__name__, e)
+    return Fail(3, e.error if isinstance(e, Fail) and e.code == 3 else "rolled back", detail + "; rolled back")
 
 
 def unified(root: Path, staged: dict) -> str:
@@ -1046,21 +1175,20 @@ def unified(root: Path, staged: dict) -> str:
     return "".join(out)
 
 
-def run_hook(root: Path, cid: str, seq: int, warns: list) -> str:
-    """Spec P2 §6 step 12: a correction land reports to kb-correct after its ledger row. Absent = skipped
-    (the row says hook_skipped); a failing hook WARNs and the land stands."""
+def run_hook(root: Path, cid: str, seq: int) -> str:
+    """Spec P2 §6 step 12: a correction land reports to kb-correct after its ledger row, inside the op.
+    Absent = skipped (the row says hook_skipped); a failing hook fails the land, which rolls back."""
     if not HOOK.is_file():
         return "skipped"
     try:
-        rc = subprocess.run([sys.executable, str(HOOK), "landed", cid, "--ledger-seq", str(seq), "--root", str(root)],
-                            capture_output=True).returncode
-    except OSError:
-        rc = -1
-    if rc == 0:
-        return "ok"
-    warns.append("hook kb-correct.py landed %s: rc %d; the land stands. Retry: python3 tools/kb-correct.py landed "
-                 "%s --ledger-seq %d" % (cid, rc, cid, seq))
-    return "failed"
+        r = subprocess.run([sys.executable, str(HOOK), "landed", cid, "--ledger-seq", str(seq), "--root", str(root)],
+                           capture_output=True)
+        rc, err = r.returncode, (r.stdout + r.stderr).decode("utf-8", "replace")[-300:]
+    except OSError as e:
+        rc, err = -1, str(e)
+    need(rc == 0, "regression registration failed: kb-correct.py landed %s rc %d %s" % (cid, rc, err.strip()),
+         3, "hook failed")
+    return "ok"
 
 
 # ---------- land / unland ----------
@@ -1101,22 +1229,36 @@ def land_one(root: Path, pid: str, dry: bool) -> dict:
                     "staged": sorted(staged), "resolves": gaps, "postcheck": plan, "warnings": warns,
                     "diff": unified(root, staged)}
         base = {"unresolved": unresolved, "recall": _load("kb-eval.py").run(root)["new"]["combined"]}
-        saved, notes = apply(root, "land", staged, base)
-        meta.update({"state": "landed", "landed_path": page_rel, "endorsed_by": owner(root), "decided_at": now()})
-        data = render(meta, body).encode("utf-8")
-        files = {p: sha256(d) for p, d in staged.items()}
-        prior = {p: sha256(saved[p]) if saved[p] is not None else None for p in staged}
-        files[rel], prior[rel] = sha256(data), sha256(old)
         cid = meta["origin"][len("correction:"):] if meta["origin"].startswith("correction:") else ""
-        extra = {"hook_skipped": "tools/kb-correct.py absent"} if cid and not HOOK.is_file() else None
-        append_ledger(root, "land", "land", pid, owner(root), meta["origin"], files, prior, resolved=gaps, extra=extra)
-        for gid in gaps:
-            transition(root, "land", "resolve", gid, owner(root), "resolved", "landed " + pid)
-        _write(root, rel, data, "land")
-    out = {"ok": True, "verb": "land", "id": pid, "path": page_rel, "ledger_seq": seq, "resolved": gaps,
-           "postcheck": notes, "warnings": warns}
-    if cid:
-        out["hook"] = run_hook(root, cid, seq, warns)
+        hooked = bool(cid) and HOOK.is_file()
+        rels = list(staged) + list(DERIVED) + [rel] + [proposal_rel(root, g) for g in gaps]
+        if hooked:
+            rels += [REGRESSIONS, "%s/_corrections/%s/record.json" % (INBOX, cid)]
+        op = Op(root, "land", pid, rels, "after-case" if hooked else "after-proposal")
+        out = {"ok": True, "verb": "land", "id": pid, "path": page_rel, "ledger_seq": seq, "resolved": gaps,
+               "warnings": warns}
+        try:
+            out["postcheck"] = apply(root, "land", staged, base, op)
+            meta.update({"state": "landed", "landed_path": page_rel, "endorsed_by": owner(root), "decided_at": now()})
+            data = render(meta, body).encode("utf-8")
+            files = {p: sha256(d) for p, d in staged.items()}
+            prior = {p: op.pre(p) for p in staged}
+            files[rel], prior[rel] = sha256(data), sha256(old)
+            extra = {"hook_skipped": "tools/kb-correct.py absent"} if cid and not HOOK.is_file() else None
+            append_ledger(root, "land", "land", pid, owner(root), meta["origin"], files, prior, resolved=gaps,
+                          extra=extra)
+            op.step("after-ledger")
+            for gid in gaps:
+                transition(root, "land", "resolve", gid, owner(root), "resolved", "landed " + pid)
+            _write(root, rel, data, "land")
+            op.step("after-proposal")
+            if cid:
+                out["hook"] = run_hook(root, cid, seq)
+            if hooked:
+                op.step("after-case")
+        except Exception as e:
+            raise rolled_back(op, e)
+        op.done()
     return out
 
 
@@ -1148,12 +1290,13 @@ def cmd_unland(root: Path, a) -> dict:
                 continue
             prior = row["prior"].get(p)
             if file_hash(root, p) == row["files"][p]:
-                data = None if prior is None else git_bytes(root, p, prior)
+                data = None if prior is None else prior_bytes(root, p, prior)
                 if prior is None or data is not None:
                     staged[p] = data
                     continue
-            need(p != page_rel, "%s changed since the land, or git holds no copy of its prior bytes: supersede it"
-                 % p, 4, "conflict")
+            need(p != page_rel, "%s changed since the land (sha256 %s, ledger row %d wrote %s), or neither %s nor "
+                 "git holds its prior bytes: supersede it" % (p, file_hash(root, p), row["seq"], row["files"][p],
+                                                            OBJECTS), 4, "conflict")
             reverse.append(p)
         if reverse:
             page = staged.get(page_rel)
@@ -1161,17 +1304,24 @@ def cmd_unland(root: Path, a) -> dict:
             staged.update({p: back[p] for p in reverse})
         dirty = sorted(set(staged) & set(drift(root, rows)))
         need(not dirty, "WP1 not clean on %s: adopt first" % ", ".join(dirty))
-        saved, _ = apply(root, "unland", staged, None)
-        for key in TOOL_KEYS:
-            meta.pop(key, None)
-        meta["state"] = "open"
-        data = render(meta, body).encode("utf-8")
-        files = {p: sha256(d) if d is not None else None for p, d in staged.items()}
-        prior = {p: sha256(saved[p]) if saved[p] is not None else None for p in staged}
-        files[rel], prior[rel] = sha256(data), sha256(old)
-        seq = append_ledger(root, "unland", "unland", a.id, owner(root), meta["origin"], files, prior,
-                            reason=a.reason.strip())
-        _write(root, rel, data, "unland")
+        op = Op(root, "unland", a.id, list(staged) + list(DERIVED) + [rel], "after-proposal")
+        try:
+            apply(root, "unland", staged, None, op)
+            for key in TOOL_KEYS:
+                meta.pop(key, None)
+            meta["state"] = "open"
+            data = render(meta, body).encode("utf-8")
+            files = {p: sha256(d) if d is not None else None for p, d in staged.items()}
+            prior = {p: op.pre(p) for p in staged}
+            files[rel], prior[rel] = sha256(data), sha256(old)
+            seq = append_ledger(root, "unland", "unland", a.id, owner(root), meta["origin"], files, prior,
+                                reason=a.reason.strip())
+            op.step("after-ledger")
+            _write(root, rel, data, "unland")
+            op.step("after-proposal")
+        except Exception as e:
+            raise rolled_back(op, e)
+        op.done()
     return {"ok": True, "verb": "unland", "id": a.id, "path": page_rel, "ledger_seq": seq,
             "exact": sorted(set(staged) - set(reverse)), "reversed": reverse}
 
@@ -1250,7 +1400,14 @@ def main(argv=None) -> int:
     configure(root)
     try:
         need((root / "KB" / "wiki").is_dir(), "%s/KB/wiki not found" % root, code=1, error="io")
+        recovered = recover(root)
         out = VERB_FN[a.verb](root, a)
+        if recovered:
+            out["recovered"] = recovered
+    except Crash as e:
+        print(json.dumps({"error": "crash", "detail": "%s=%s" % (FAULT_ENV, e)}) if a.json else
+              "kb-write %s: simulated crash at %s (exit 9)" % (a.verb, e), file=sys.stdout if a.json else sys.stderr)
+        return 9
     except Fail as e:
         if a.json:
             print(json.dumps({"error": e.error, "detail": e.detail}, ensure_ascii=False))
