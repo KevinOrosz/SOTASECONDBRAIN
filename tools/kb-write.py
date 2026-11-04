@@ -95,6 +95,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 
@@ -726,6 +727,20 @@ def cmd_list(root: Path, a) -> dict:
         items.append({"id": pid, "kind": meta.get("kind"), "state": meta.get("state"),
                       "proposed_by": meta.get("proposed_by"), "proposed_at": meta.get("proposed_at"),
                       "origin": meta.get("origin"), "confidence": meta.get("confidence"), "path": rel})
+    if getattr(a, "diff", False):
+        touched = {}
+        for item in items:
+            if item["state"] != "open" or item["kind"] == "gap":
+                item["review_note"] = "Not an open landable proposal"
+                continue
+            try:
+                item["preview"] = land_one(root, item["id"], True)
+                for path in item["preview"]["staged"]:
+                    touched.setdefault(path, []).append(item["id"])
+            except Fail as exc:
+                item["review_error"] = exc.detail
+        overlaps = {p: ids for p, ids in touched.items() if len(ids) > 1}
+        return {"ok": True, "verb": "list", "items": items, "overlaps": overlaps}
     return {"ok": True, "verb": "list", "items": items}
 
 
@@ -748,7 +763,7 @@ def cmd_seal(root: Path, a) -> dict:
     with locked(root):
         moved = drift(root, read_ledger(root))
         seq = append_ledger(root, "reseal", "reseal", "", owner(root), "", {p: d for p, (_, d) in moved.items()},
-                            {p: e for p, (e, _) in moved.items()}, reason=a.reason.strip())
+                            {p: e for p, (e, _) in moved.items()}, reason=a.reason.strip(), extra={"approval_mode": getattr(a, "approval_mode", "claimed-owner")})
     return {"ok": True, "verb": "seal", "id": "", "path": LEDGER, "ledger_seq": seq, "count": len(moved)}
 
 
@@ -771,7 +786,7 @@ def cmd_adopt(root: Path, a) -> dict:
         still = [r for r in rels if r not in moved]
         need(not still, "nothing to adopt: %s match their expected hash" % ", ".join(still))
         seq = append_ledger(root, "adopt", "adopt", "", owner(root), "", {r: moved[r][1] for r in rels},
-                            {r: moved[r][0] for r in rels}, reason=a.reason.strip())
+                            {r: moved[r][0] for r in rels}, reason=a.reason.strip(), extra={"approval_mode": getattr(a, "approval_mode", "claimed-owner")})
     return {"ok": True, "verb": "land", "id": "", "path": LEDGER, "ledger_seq": seq, "count": len(rels)}
 
 
@@ -1194,7 +1209,46 @@ def run_hook(root: Path, cid: str, seq: int) -> str:
 
 # ---------- land / unland ----------
 
-def land_one(root: Path, pid: str, dry: bool) -> dict:
+def approval_payload(root: Path, pid: str, staged: dict) -> bytes:
+    """Sign exact bytes, base state, source state and ledger position. No signing key is read."""
+    def tree(path):
+        return {p.relative_to(root).as_posix(): sha256(p.read_bytes())
+                for p in sorted(path.rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
+    payload = {"schema": 1, "owner": owner(root), "proposal": pid,
+               "proposal_hash": file_hash(root, proposal_rel(root, pid)),
+               "ledger_hash": file_hash(root, LEDGER), "seal_hash": file_hash(root, SEAL),
+               "config_hash": file_hash(root, CONFIG), "wiki": tree(root / "KB/wiki"),
+               "sources": tree(root / "KB/RAW"), "tools": tree(root / "tools"),
+               "regressions_hash": file_hash(root, REGRESSIONS),
+               "post": {p: sha256(data) if data is not None else None for p, data in staged.items()}}
+    return (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def verify_signature(root: Path, payload: bytes, signature: bytes, identity: str) -> None:
+    allowed = config(root).get("allowed_signers", "")
+    need(allowed and Path(allowed).is_absolute(), "allowed_signers must be an absolute owner-controlled path")
+    with tempfile.TemporaryDirectory(prefix="kb-signature-") as folder:
+        sig = Path(folder) / "approval.sig"
+        sig.write_bytes(signature)
+        result = subprocess.run(["ssh-keygen", "-Y", "verify", "-f", allowed, "-I", identity,
+                                 "-n", "kb-land", "-s", str(sig)], input=payload, capture_output=True)
+    need(result.returncode == 0, "signature invalid or stale: " + result.stderr.decode("utf-8", "replace"))
+
+
+def confirm_action(a, detail: str) -> str:
+    if not getattr(a, "confirm", False):
+        return "claimed-owner"
+    need(sys.stdin.isatty(), "--confirm requires an interactive terminal; use the explicit --non-interactive flag for scripts")
+    print(detail, file=sys.stderr)
+    try:
+        answer = input("Type approve to continue: ")
+    except EOFError:
+        answer = ""
+    need(answer == "approve", "approval cancelled")
+    return "interactive-confirmation"
+
+
+def land_one(root: Path, pid: str, dry: bool, approval=None) -> dict:
     rel = proposal_rel(root, pid)
     with contextlib.nullcontext() if dry else locked(root):
         meta, body, old = read_proposal(root, rel)
@@ -1231,7 +1285,21 @@ def land_one(root: Path, pid: str, dry: bool) -> dict:
                     "kb-lint 0 FAIL", "any miss: restore every captured byte, exit 3"]
             return {"ok": True, "verb": "land", "id": pid, "path": page_rel, "ledger_seq": None, "dry_run": True,
                     "staged": sorted(staged), "sources": sources, "resolves": gaps, "postcheck": plan, "warnings": warns,
-                    "diff": unified(root, staged)}
+                    "diff": unified(root, staged), "approval_payload": approval_payload(root, pid, staged).decode("utf-8")}
+        approval_mode = "claimed-owner"
+        receipt = None
+        if approval is not None:
+            cfg = config(root)
+            signature = getattr(approval, "signature", None)
+            need(not cfg.get("require_signed_lands") or signature, "signed land required by instance configuration")
+            if signature:
+                payload = approval_payload(root, pid, staged)
+                signed_bytes = Path(signature).read_bytes()
+                verify_signature(root, payload, signed_bytes, owner(root))
+                receipt = {"payload": payload.decode("utf-8"), "signature": signed_bytes.decode("ascii")}
+                approval_mode = "ssh-signature"
+            else:
+                approval_mode = confirm_action(approval, unified(root, staged))
         base = {"unresolved": unresolved, "recall": _load("kb-eval.py").run(root)["new"]["combined"]}
         cid = meta["origin"][len("correction:"):] if meta["origin"].startswith("correction:") else ""
         hooked = bool(cid) and HOOK.is_file()
@@ -1249,7 +1317,9 @@ def land_one(root: Path, pid: str, dry: bool) -> dict:
             files = {p: sha256(d) for p, d in staged.items()}
             prior = {p: op.pre(p) for p in staged}
             files[rel], prior[rel] = sha256(data), sha256(old)
-            extra = {"sources": sources}
+            extra = {"sources": sources, "approval_mode": approval_mode}
+            if receipt is not None:
+                extra["approval"] = receipt
             if cid and not HOOK.is_file():
                 extra["hook_skipped"] = "tools/kb-correct.py absent"
             append_ledger(root, "land", "land", pid, owner(root), meta["origin"], files, prior, resolved=gaps,
@@ -1276,7 +1346,8 @@ def cmd_land(root: Path, a) -> dict:
     need(a.ids, "land wants ID... --endorsed-by OWNER, or --adopt PATH...", 1, "usage")
     need(a.endorsed_by == owner(root), "--endorsed-by %s is required, after the owner has read the proposal"
          % owner(root))
-    outs = [land_one(root, pid, a.dry_run) for pid in a.ids]
+    need(not getattr(a, "signature", None) or len(a.ids) == 1, "one signed proposal per land")
+    outs = [land_one(root, pid, a.dry_run, a) for pid in a.ids]
     return outs[0] if len(outs) == 1 else {"ok": True, "verb": "land", "id": " ".join(a.ids), "path": "",
                                            "ledger_seq": outs[-1]["ledger_seq"], "items": outs}
 
@@ -1322,7 +1393,7 @@ def cmd_unland(root: Path, a) -> dict:
             prior = {p: op.pre(p) for p in staged}
             files[rel], prior[rel] = sha256(data), sha256(old)
             seq = append_ledger(root, "unland", "unland", a.id, owner(root), meta["origin"], files, prior,
-                                reason=a.reason.strip())
+                                reason=a.reason.strip(), extra={"approval_mode": getattr(a, "approval_mode", "claimed-owner")})
             op.step("after-ledger")
             _write(root, rel, data, "unland")
             op.step("after-proposal")
@@ -1375,6 +1446,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--state")
     p.add_argument("--origin")
     p.add_argument("--since")
+    p.add_argument("--diff", action="store_true", help="read-only dry-run diff for each open proposal")
     p = sub.add_parser("seal", parents=[common])
     p.add_argument("--reseal", action="store_true")
     p.add_argument("--reason")
@@ -1394,6 +1466,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("id")
     p.add_argument("--reason")
     p.add_argument("--endorsed-by")
+    for name in ("land", "unland", "seal"):
+        target = sub.choices[name]
+        group = target.add_mutually_exclusive_group()
+        group.add_argument("--confirm", action="store_true", help="interactive accident-prevention prompt, not authentication")
+        group.add_argument("--non-interactive", action="store_true", help="explicit script mode; claimed owner only")
+    sub.choices["land"].add_argument("--signature", help="SSH signature over the dry-run approval_payload")
     return ap
 
 
@@ -1407,7 +1485,11 @@ def main(argv=None) -> int:
     configure(root)
     try:
         need((root / "KB" / "wiki").is_dir(), "%s/KB/wiki not found" % root, code=1, error="io")
-        recovered = recover(root)
+        read_only = (a.verb == "list" and getattr(a, "diff", False)) or getattr(a, "dry_run", False)
+        need(not read_only or not list((root / OPS).glob("*.json")), "unfinished operation: run a mutating command to recover before review")
+        recovered = [] if read_only else recover(root)
+        if (a.verb == "unland" or (a.verb == "seal" and a.reseal) or (a.verb == "land" and a.adopt)):
+            a.approval_mode = confirm_action(a, "%s: %s" % (a.verb, getattr(a, "id", None) or getattr(a, "adopt", None) or "rebase seal"))
         out = VERB_FN[a.verb](root, a)
         if recovered:
             out["recovered"] = recovered
@@ -1434,8 +1516,17 @@ def main(argv=None) -> int:
         for it in out["items"]:
             print("%-44s %-7s %-9s %-24s %s" % (it["id"], it["kind"], it["state"], it["origin"] or "-",
                                                 it["proposed_at"]))
+            if "preview" in it:
+                print(it["preview"]["diff"])
+            if "review_error" in it:
+                print("  BLOCKED: " + it["review_error"])
+        if out.get("overlaps"):
+            print("Overlapping paths (review each base again before landing):")
+            print(json.dumps(out["overlaps"], indent=2))
         print("%d proposal(s)" % len(out["items"]))
     else:
+        if out.get("dry_run"):
+            print(out["diff"])
         print("%s %s -> %s%s%s" % (a.verb, out["id"] or "-", out["path"],
                                    "" if out["ledger_seq"] is None else " (ledger %d)" % out["ledger_seq"],
                                    " · %d file(s)" % out["count"] if "count" in out else ""))

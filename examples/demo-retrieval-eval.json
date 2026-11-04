@@ -1,53 +1,61 @@
 {
- "note": "demo gold, written from titles and claims before running a ranker",
- "questions": [
-  {
-   "id": 1,
-   "shape": "lookup",
-   "q": "compost green brown scraps",
-   "gold": [
-    "composting"
-   ]
-  },
-  {
-   "id": 2,
-   "shape": "lookup",
-   "q": "knife claw grip",
-   "gold": [
-    "knife-skills"
-   ]
-  },
-  {
-   "id": 3,
-   "shape": "lookup",
-   "q": "spaced repetition intervals",
-   "gold": [
-    "spaced-repetition"
-   ]
-  },
-  {
-   "id": 4,
-   "shape": "body",
-   "q": "earthworms fungi sponge",
-   "gold": [
-    "soil-health"
-   ]
-  },
-  {
-   "id": 5,
-   "shape": "body",
-   "q": "lemon vinegar brightens",
-   "gold": [
-    "seasoning"
-   ]
-  },
-  {
-   "id": 6,
-   "shape": "body",
-   "q": "all-nighter consolidation",
-   "gold": [
-    "sleep-and-memory"
-   ]
-  }
- ]
+  "note": "demo gold, written from titles and claims before running a ranker",
+  "questions": [
+    {
+      "id": 1,
+      "shape": "lookup",
+      "q": "compost green brown scraps",
+      "gold": [
+        "composting"
+      ]
+    },
+    {
+      "id": 2,
+      "shape": "lookup",
+      "q": "knife claw grip",
+      "gold": [
+        "knife-skills"
+      ]
+    },
+    {
+      "id": 3,
+      "shape": "lookup",
+      "q": "spaced repetition intervals",
+      "gold": [
+        "spaced-repetition"
+      ]
+    },
+    {
+      "id": 4,
+      "shape": "body",
+      "q": "earthworms fungi sponge",
+      "gold": [
+        "soil-health"
+      ]
+    },
+    {
+      "id": 5,
+      "shape": "body",
+      "q": "lemon vinegar brightens",
+      "gold": [
+        "seasoning"
+      ]
+    },
+    {
+      "id": 6,
+      "shape": "body",
+      "q": "all-nighter consolidation",
+      "gold": [
+        "sleep-and-memory"
+      ]
+    },
+    {
+      "id": 7,
+      "shape": "lookup",
+      "q": "compost",
+      "gold": [
+        "composting"
+      ]
+    }
+  ]
 }

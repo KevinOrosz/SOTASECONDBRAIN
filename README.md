@@ -17,9 +17,11 @@
 
 **Start here.** This page is the user guide, for people and AI agents alike. Read it top to bottom once; everything else in the repo is reference.
 
-**In one sentence:** a knowledge base made of plain Markdown files, where anyone (including AI agents) can *suggest* changes, only one person (the **owner**) can *approve* them, every change is logged and undoable, and every fixed mistake gets a test so it can never come back.
+**In one sentence:** a knowledge base made of plain Markdown files, where anyone (including AI agents) can *suggest* changes, only one person (the **owner**) can *approve* them, tool-mediated changes are logged with undo history, and corrections become tests for the mistakes they cover.
 
-**Like you're five:** it's a library with a locked front desk. Anyone can drop a book suggestion in the box. Only the librarian puts books on the shelf. Every book in or out is written in a notebook that can't be erased.
+**Trust boundary:** owner approval is a workflow convention, not shell-level access control. A typed owner flag does not authenticate a human. Interactive confirmation prevents accidents; optional SSH-signed lands bind approval to exact bytes. See [Trust boundaries](docs/TRUST.md).
+
+The project focuses on preserving corrections through reviewed edits and regression cases. The name is not a claim of benchmark superiority. Search uses local lexical and graph-based methods; no embedding service is required.
 
 No accounts, no servers, no API keys, no AI calls inside the tools. Works with any AI model and any agent tool.
 
@@ -42,7 +44,7 @@ git clone https://github.com/KevinOrosz/SOTASECONDBRAIN.git
 cd SOTASECONDBRAIN
 ```
 
-(Private repo: you need an invite from the repo owner first. Accept it from your email or github.com.)
+This repository is public; cloning requires no invitation.
 
 ### Step 2 · Test drive in a sandbox (recommended)
 
@@ -73,7 +75,7 @@ You want to see `RESULT: 0 fail(s)`.
 ### Step 5 · Add knowledge
 
 - Put source material (notes, transcripts, articles) in `KB/RAW/`.
-- Wiki pages live in `KB/wiki/<category>/<page>.md`. They are plain Markdown. Edit them in any editor or open the folder in Obsidian.
+- Wiki pages live in `KB/wiki/<category>/<page>.md`. They are plain Markdown and can be read in Obsidian. Propose edits through the inbox; direct edits cause provenance drift. For existing notes, use the preview-first [folder importer](docs/UPGRADING.md#import-existing-notes).
 
 ### Step 6 · Ask it something
 
@@ -81,7 +83,7 @@ You want to see `RESULT: 0 fail(s)`.
 bin/kb query "your question"
 ```
 
-It lists the pages that answer it best. Open the search page at `KB/output/kb-search.html` in a browser for the same thing with a search box.
+It retrieves candidate pages using hybrid search with Porter stemming, so `compost` can find `composting`. Read the pages to answer. `bin/kb query --keyword "your question"` retains the legacy scorer and JSON format. The browser dashboard at `KB/output/kb-search.html` has its own search implementation; results can differ.
 
 ### Step 7 · Let agents suggest changes
 
@@ -99,16 +101,16 @@ To have an AI agent do this for you, open this folder in your agent tool (Claude
 ### Step 8 · Review and approve
 
 ```bash
-bin/kb write list                                  # see what's waiting
+bin/kb write list --diff                           # review pending diffs and overlaps
 make land ID=GURU/2026-10-26-mulching              # approve: it enters the wiki
 make unland ID=GURU/2026-10-26-mulching REASON="not right"   # undo it
 ```
 
-Use the real ID from `bin/kb write list`. Reject a proposal with `bin/kb write reject ID --reason "why" --by <you>`.
+The make targets display a confirmation prompt. Use the real ID from `bin/kb write list`. Reject a proposal with `bin/kb write reject ID --reason "why" --by <you>`.
 
 ### Step 9 · Fix a wrong answer for good
 
-When the brain answers something wrong, follow **`docs/CORRECTION-TUTORIAL.md`**. The fix lands as a reviewed edit plus a regression test, and every future change must pass that test.
+When the brain answers something wrong, follow **`docs/CORRECTION-TUTORIAL.md`**. Use `bin/kb correct next C-0001` to see the next packet and command. The fix lands as a reviewed edit plus a regression test. Deterministic cases gate future lands; answer cases also need fresh external replay and judgment. Real correction time has not yet been measured.
 
 ### Step 10 · Stay healthy
 
@@ -180,7 +182,7 @@ KB/  evals/        your instance (created by bootstrap; ignored by git)
 ```
 
 Your instance (`KB/`, `evals/`) is listed in `.gitignore`, so updating the package never touches
-your notes. Want your notes versioned? Keep `KB/` in its own git repo, or remove it from `.gitignore`.
+your notes. Undo of new lands uses saved preimages, not git. Back up the whole instance, including `KB/inbox/` and `evals/`. Want your notes versioned? Keep `KB/` in its own git repo, or remove it from `.gitignore`.
 
 ### Settings
 
@@ -199,7 +201,7 @@ Any assistant that can run shell commands can propose pages with `bin/kb write p
 After the quickstart you have a working, checked knowledge base:
 
 - **A typed wiki** (`KB/wiki/`) whose every page header is linted, with a search page and a link graph.
-- **A gate.** Nothing enters the wiki unless you land it; every land and unland is fingerprinted in the ledger.
+- **A workflow gate.** Tool-mediated land and unland operations are fingerprinted in the ledger. Shell access can bypass this workflow.
 - **A memory for mistakes.** Each correction you make becomes one small page fix plus a regression case,
   and every later land must keep passing it.
 - **Proof the loop closes.** `tests/test-kb-loop-e2e.py` (last in `make test` and `make verify`) runs a
@@ -217,6 +219,6 @@ After the quickstart you have a working, checked knowledge base:
 
 ### Status
 
-Version 0.2.0. The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
+Version 0.2.1; the [Unreleased upgrades](CHANGELOG.md#unreleased) are documented in [UPGRADING.md](docs/UPGRADING.md). The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
 correction compiler, end-to-end loop test) is complete. Further phases wait until three real corrections
 have landed (`docs/HANDOFF.md` §5). MIT licensed.

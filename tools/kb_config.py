@@ -13,6 +13,8 @@ CONFIG = "KB/kb.json"
 DEFAULTS = {
     "owner": "owner",                                # the one human id that endorses lands (lowercase)
     "title": "Knowledge Base",                       # shown in the search dashboard header
+    "require_signed_lands": False,
+    "allowed_signers": "",
     "agents": [],                                    # extra agent ids (UPPERCASE) allowed to propose
     "agents_glob": "agents/*/soul.md",               # each match's parent folder name is an agent id
     "dashboard": "KB/output/kb-search.html",         # kb-index writes the search page here

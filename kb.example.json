@@ -2,14 +2,9 @@
   "owner": "owner",
   "title": "Knowledge Base",
   "agents": [
-    "MAGI",
-    "GURU",
-    "CODA",
-    "CLERIC",
-    "SIGNAL",
-    "PRISM"
+    "GURU"
   ],
-  "agents_glob": "agents/*/soul.md",
+  "agents_glob": "souls/*/soul.md",
   "dashboard": "KB/output/kb-search.html",
   "regressions": "evals/regressions.jsonl",
   "baseline": "evals/kb-health-baseline.json",

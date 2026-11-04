@@ -21,6 +21,7 @@ Stdlib only (sqlite3 FTS5 provides BM25 — no pip, no network). Python 3.9.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import re
@@ -183,6 +184,7 @@ def verb_search(root: Path, graph: Graph, query: str, k: int):
     # list 1 — BM25 over sections (FTS5). OR-expanded: bare multi-term MATCH is AND and
     # silently returns almost nothing on a 4-word question.
     bm25_rank, best_section = [], {}
+    fallback = ""
     db = build_fts(root, graph)
     if db is not None:
         expr = " OR ".join('"%s"' % t for t in terms)
@@ -194,12 +196,16 @@ def verb_search(root: Path, graph: Graph, query: str, k: int):
                     best_section[stem] = (heading, round(score, 2))
                     bm25_rank.append(stem)
         except sqlite3.OperationalError as exc:
-            print("  ! FTS query failed: %s" % exc, file=sys.stderr)
+            fallback = "FTS query failed; keyword fallback: %s" % exc
+        finally:
+            db.close()
+    else:
+        fallback = "SQLite FTS5 unavailable; keyword fallback (no stemming)"
 
     # list 2 — the existing field-weighted scorer, reused verbatim so the two agree.
     # Degrades to BM25-only rather than crashing: kb-index.json is a separate artifact with its
     # own build step, and a missing index must not take the whole graph query surface down.
-    kw_rank, degraded = [], ""
+    kw_rank, degraded = [], fallback
     index_path = root / "KB" / "output" / "kb-index.json"
     if index_path.exists():
         kwq = load_sibling("kb-query.py")
@@ -207,7 +213,7 @@ def verb_search(root: Path, graph: Graph, query: str, k: int):
         _, kw_hits = kwq.rank(arts, query, kwq.build_indegree(arts), k=200)
         kw_rank = [h["stem"] for h in kw_hits]
     else:
-        degraded = "kb-index.json missing — BM25 only; run `python3 tools/kb-index.py`"
+        degraded = "; ".join(x for x in (fallback, "kb-index.json missing; run bin/kb index") if x)
 
     # fusion — RRF beats tuned weighted sums and needs no calibration.
     fused = defaultdict(float)
@@ -233,7 +239,10 @@ def verb_search(root: Path, graph: Graph, query: str, k: int):
         })
     return {"query": query, "terms": terms, "verb": "search",
             "fusion": "RRF(bm25_sections*%.1f, field_keyword*1.0)" % BM25_WEIGHT,
-            "degraded": degraded, "results": results}
+            "degraded": degraded, "retrieval": {"ranker": "keyword" if fallback else "hybrid-graph",
+            "k": k, "tool": "kb-graph-query.py", "stemming": not bool(fallback),
+            "version": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12],
+            "sqlite": sqlite3.sqlite_version}, "results": results}
 
 
 def verb_connect(graph: Graph, a_in: str, b_in: str, limit: int):
@@ -568,6 +577,8 @@ def main(argv):
     ap.add_argument("--k", type=int, default=8)
     ap.add_argument("--depth", type=int, default=1)
     a = ap.parse_args(argv[1:])
+    if a.k < 1:
+        ap.error("--k must be positive")
     root = Path(a.root).resolve()
     graph = Graph(root)
 

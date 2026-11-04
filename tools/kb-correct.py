@@ -909,13 +909,64 @@ def cmd_status(root: Path, a) -> dict:
                                                                                       cids(root))]}
 
 
+def cmd_next(root: Path, a) -> dict:
+    """Read-only guidance; packet contents retain the existing blindness whitelist."""
+    rec = load_record(root, a.cid)
+    step, run = rec.get("await"), ""
+    if rec["stage"] == "validated":
+        step = "validate" if stale_keys(root, rec) else "land"
+    if rec["stage"] == "reviewed" and rec["validate"].get("binding") and stale_keys(root, rec):
+        step = "validate"
+    elif step == "replay":
+        step = "validate"
+        for name in rec["validate"].get("runs", {}):
+            results = cdir(root, a.cid) / "results"
+            if not (results / ("replay-%s.md" % name)).exists():
+                step, run = "replay", name
+                break
+            if not (results / ("judge-%s.json" % name)).exists():
+                step, run = "judge", name
+                break
+    out = {"cid": a.cid, "stage": rec["stage"], "next": step, "run": run}
+    prefix = "bin/kb correct"
+    if rec["stage"] == "proposed":
+        out.update(next="owner-review", command="bin/kb write list --diff",
+                   owner_command="make land ID=" + rec["land"]["proposal"],
+                   note="Review the proposal before running the owner command.")
+    elif step in PACKETS:
+        packet = dict(packet_payload(root, rec, step, run), step=step, cid=a.cid)
+        if run:
+            packet["run"] = run
+        need(not set(packet) - PACKETS[step], "packet whitelist mismatch")
+        out["packet"] = packet
+        suffix = " --run " + run if run else ""
+        out["command"] = "%s record %s %s --result RESULT_FILE%s" % (prefix, a.cid, step, suffix)
+        out["note"] = "Give only this packet to a fresh worker; record its result separately."
+        templates = {"conflict": {"conflict": None, "primary": [], "reason": ""},
+                     "compile": {"files": {}}, "review": {"verdict": "", "findings": []},
+                     "judge": {"verdict": "", "evidence": ""}, "replay": ""}
+        out["result_template"] = templates[step]
+        if a.write_template:
+            name = "next-%s%s.%s" % (step, "-" + run if run else "", "md" if step == "replay" else "json")
+            target = cdir(root, a.cid) / name
+            need(not target.exists(), "%s exists; refusing to overwrite" % target)
+            value = templates[step]
+            _write(root, a.cid, name, value if isinstance(value, str) else json.dumps(value, indent=2) + "\n")
+            out["template_path"] = str(target)
+    elif step:
+        out["command"] = "%s %s %s" % (prefix, step, a.cid)
+    else:
+        out["note"] = "Terminal correction; no automatic action."
+    return out
+
+
 def cmd_packet(root: Path, a) -> dict:
     rec = load_record(root, a.cid)
     need(a.step in PACKETS, "packet step %r unknown (want %s)" % (a.step, sorted(PACKETS)))
     return {"cid": rec["cid"], "packet": str(emit(root, rec, a.step, a.run or ""))}
 
 
-VERB_FN = {"open": cmd_open, "diagnose": cmd_diagnose, "packet": cmd_packet, "record": cmd_record,
+VERB_FN = {"next": cmd_next, "open": cmd_open, "diagnose": cmd_diagnose, "packet": cmd_packet, "record": cmd_record,
            "validate": cmd_validate, "kill": cmd_kill, "status": cmd_status,
            "land": cmd_land, "landed": cmd_landed, "replay-all": cmd_replay_all}
 
@@ -927,6 +978,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("step", nargs="?")
     ap.add_argument("--root", default=str(ROOT))
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--write-template", action="store_true", help="next: create an unfilled response template, never overwrite")
     ap.add_argument("--q")
     ap.add_argument("--owner-says")
     ap.add_argument("--points-file")
@@ -944,7 +996,7 @@ def main(argv=None) -> int:
     root = Path(a.root).resolve()
     try:
         need((root / "KB" / "wiki").is_dir(), "%s/KB/wiki not found" % root)
-        if a.verb != "landed" and KBW.is_file():  # landed runs inside a kb-write op, under its lock
+        if a.verb not in ("landed", "next") and KBW.is_file():  # landed runs inside a kb-write op, under its lock
             recover(root)
         if a.verb in ("diagnose", "packet", "record", "validate", "kill", "land", "landed"):
             need(a.cid, "%s needs a CID" % a.verb)

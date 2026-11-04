@@ -3,7 +3,7 @@
 > For any builder: a coding agent in any harness, any model, or a human engineer.
 >
 > **Development continues in this package** (`second-brain-loop/`). Sessions 1–5 were built inside a private reference instance and extracted here on 2026-10-26; commit ids in §4 belong to that instance's history, not this repo's. From session 6 on, build, test and commit here.
-> Updated 2026-10-26. Status: DRAFT until the instance owner reviews. **Lean path complete: sessions 1–8 done (0.2.0).**
+> Updated 2026-11-04. Implementation status: lean path complete; release and owner acceptance are separate from test results. See CHANGELOG Unreleased and UPGRADING for the feedback upgrade. **Lean path complete: sessions 1–8 done (0.2.0).**
 
 ## 1. What this is
 
@@ -77,9 +77,9 @@ Tiers are provider-neutral: low / mid / high = any vendor's small / medium / lar
 
 Session 8 shipped `tests/test-kb-loop-e2e.py`: on `kb_testkit.fixture(..., regressions=True, git=True)` it drives `kb-correct` and `kb-write` as CLIs with fixture JSON for every model step. `open → diagnose → record → validate` reaches `validated`; `kb-correct land` → owner `kb-write land` → hook `landed` appends exactly 1 case; `kb-eval --regressions` exits 0, `kb-lint --rule all` 0 FAIL, ledger hash = disk hash, one Type/Confidence/Provenance line; `kb-write unland` → `kb-eval --regressions` exits 1 (discrimination proof). It runs last in `scripts/verify.sh` (section 7, spec block 20) and in `bin/kb test`.
 
-**Next.** No build session opens until the owner has landed 3 real corrections whose cases discriminate (ruling 6). Then sessions 9–13 per spec §0, in order.
+**Next.** Advanced phases 9–13 still wait for 3 real discriminating corrections. The owner-authorized feedback upgrade addresses maintenance and onboarding independently; it does not establish that milestone.
 
-**Carried notes.** (a) `unland` of a correction leaves its case active, so later lands fail until the fix is relanded or the case retired. (b) `KB/` must be in git to unland a page that existed before (supersede); the shipped `.gitignore` excludes it. (c) No `skills/REGISTRY.md`, `brain-think` or Write-Back Protocol ships; spec P3 row 55 waits for session 10. (d) `replay-all` is manual, never a land gate. (e) `docs/RESEARCH.md` line 31 names third-party tools. (f) `kb-query`'s keyword scorer does not stem (`compost` misses `composting`).
+**Carried notes.** (a) `unland` of a correction leaves its case active, so later lands fail until the fix is relanded or the case retired. (b) New lands store exact preimages in `_objects/`; supersede undo works with `KB/` ignored. Git is retained as a fallback for older lands. (c) No `skills/REGISTRY.md`, `brain-think` or Write-Back Protocol ships; spec P3 row 55 waits for session 10. (d) `replay-all` is manual, never a land gate. (e) `docs/RESEARCH.md` line 31 names third-party tools. (f) `bin/kb query` now uses hybrid search with stemming; `--keyword` and internal correction rankers preserve legacy behavior.
 
 ## 6. Rules for every session
 
@@ -87,7 +87,7 @@ Session 8 shipped `tests/test-kb-loop-e2e.py`: on `kb_testkit.fixture(..., regre
 - Agents write only to `KB/inbox/`. Only `kb-write land` touches `KB/wiki`.
 - One canonical home per contract (spec §1.1). Import it, never redefine it.
 - Every new file traces to a run-log row. No placeholder files.
-- Local-only until the owner says otherwise: never add a git remote, never push.
+- The reference instance used a local-only publication rule. For this public package, follow CONTRIBUTING and the current owner's authorization for branches, pushes and releases.
 - Stop and report on any consequential blocker. Never route around it.
 - Verify against disk before claiming done. A builder's report is a claim, not proof.
 

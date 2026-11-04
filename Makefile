@@ -28,12 +28,12 @@ sandbox:
 	scripts/sandbox.sh
 
 status:
-	bin/kb write list
-	bin/kb doctor || true
+	bin/kb status
+APPROVAL ?= --confirm
 OWNER ?= $(shell python3 -c 'import sys; sys.path.insert(0, "tools"); import kb_config; print(kb_config.load(".")["owner"])')
 land:
 	@test -n "$(ID)" || (echo "usage: make land ID=AGENT/YYYY-MM-DD-slug" && exit 1)
-	bin/kb write land $(ID) --endorsed-by $(OWNER)
+	bin/kb write land $(ID) --endorsed-by $(OWNER) $(APPROVAL)
 unland:
 	@test -n "$(ID)" -a -n "$(REASON)" || (echo "usage: make unland ID=... REASON='why'" && exit 1)
-	bin/kb write unland $(ID) --reason "$(REASON)" --endorsed-by $(OWNER)
+	bin/kb write unland $(ID) --reason "$(REASON)" --endorsed-by $(OWNER) $(APPROVAL)

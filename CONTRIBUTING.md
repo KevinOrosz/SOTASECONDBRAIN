@@ -31,3 +31,7 @@ Update `CHANGELOG.md` under an "Unreleased" heading, and the docs if behavior ch
 ## Where things are
 
 `docs/ARCHITECTURE.md` explains how the pieces connect, `docs/SPEC.md` is the canonical spec, and `docs/HANDOFF.md` shows build status and what's next.
+
+## Review and release discipline
+
+Keep behavior changes covered by success and failure tests. Check clean bootstrap, existing-instance preservation, read-only review, and rollback. Explain CLI compatibility changes and migration in CHANGELOG and UPGRADING. Do not claim runtime evidence from source inspection alone. CI uses read-only permissions and immutable action pins; review automated pin updates. Maintainers should require passing CI and review before merging, and publish a version/tag only after those checks. Repository protection settings are administrative configuration, not enabled by this document.

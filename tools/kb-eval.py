@@ -158,6 +158,7 @@ def run(root: Path):
     stems = {a["stem"] for a in graph.g["nodes"]["article"]}
 
     rows, missing_gold = [], []
+    effective_methods = []
     for q in ev["questions"]:
         gold = set(q["gold"])
         for g in gold:
@@ -165,7 +166,9 @@ def run(root: Path):
                 missing_gold.append((q["id"], g))
         _, oh = kbq.rank(arts, q["q"], indeg, k=K)
         old = {h["stem"] for h in oh}
-        new = {r["stem"] for r in kbg.verb_search(root, graph, q["q"], K)["results"]}
+        search = kbg.verb_search(root, graph, q["q"], K)
+        effective_methods.append(search["retrieval"])
+        new = {r["stem"] for r in search["results"]}
         rows.append({
             "id": q["id"], "shape": q["shape"], "q": q["q"],
             "old": len(gold & old) / len(gold), "new": len(gold & new) / len(gold),
@@ -182,7 +185,8 @@ def run(root: Path):
         "questions": len(rows),
         "recall_at": K,
         "retrieval": {"old": retrieval_method("keyword", "kb-query.py", K, root),
-                      "new": retrieval_method("hybrid-graph", "kb-graph-query.py", K, root)},
+                      "new": dict(retrieval_method("hybrid-graph", "kb-graph-query.py", K, root),
+                                  effective_methods=effective_methods)},
         "old": {"combined": mean("old"), "lookup": mean("old", lookup), "body": mean("old", body)},
         "new": {"combined": mean("new"), "lookup": mean("new", lookup), "body": mean("new", body)},
         "improved": sum(1 for r in rows if r["new"] > r["old"]),

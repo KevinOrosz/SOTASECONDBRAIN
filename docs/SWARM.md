@@ -16,6 +16,8 @@
 
 ## 2. The roster
 
+WIZARD and GURU ship runnable role files under `souls/`. The other roles below are optional architecture examples, not installed agents. A single assistant can use this package without a swarm. Existing custom `agents/` configurations remain supported.
+
 | Agent | Lane | Hands back | Hard boundary |
 |---|---|---|---|
 | **WIZARD** | Setup guide: takes a new user from fresh clone to a verified brain and first approved page | a running instance, a guided first land | never approves on the owner's behalf; never installs software |
@@ -33,10 +35,10 @@ Domain specialists plug in the same way. Each is a folder with a `soul.md` and a
 ## 3. Boot protocol
 
 - **Name-first activation.** An exact all-caps agent NAME is a boot command. Several names boot in written order.
-- **Soul first.** Every agent's chain starts with `agents/{NAME}/soul.md`, which defines identity, lane, input contract, outputs, boundaries, handoffs, done condition and continuity. Optional files follow in a fixed order: `program.md` (loop logic), `prepare.md` (constants), `rubric.md` (self-scoring), `checks.md`. Then the shared protocols.
+- **Soul first.** Every agent's chain starts with `souls/{NAME}/soul.md` (or the instance's configured legacy path), which defines identity, lane, input contract, outputs, boundaries, handoffs, done condition and continuity. Optional files follow in a fixed order: `program.md` (loop logic), `prepare.md` (constants), `rubric.md` (self-scoring), `checks.md`. Then the shared protocols.
 - **Pre-flight.** A deterministic open step checks drift, memory caps, the verify harness and the skill harness. It reports facts, not orders.
 - **Boot output cap.** At most 5 lines: state restored, headline, await or act. Spend tokens on missions, not ceremony.
-- **Registration contract.** An agent is routable only when its folder name matches `^[A-Z][A-Z0-9_]{1,31}$`, its soul is a regular file, and it has an activation row, a routing row and a roster entry. Missing or duplicate names are `BOOT_INVALID`: stop and report, never guess.
+- **Registration contract.** An agent is routable only when its folder name matches `^[A-Z][A-Z0-9_]{1,31}$`, its soul is a regular file, and it is registered explicitly or discovered through `agents_glob`. Activation/routing registries are optional private-instance infrastructure, not required by this package. Missing requested role files must be reported.
 
 ## 4. Loop discipline
 
