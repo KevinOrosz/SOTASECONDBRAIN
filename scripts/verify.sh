@@ -11,6 +11,8 @@ REG="$(python3 -c 'import sys; sys.path.insert(0, "tools"); import kb_config; pr
 
 if [ ! -d KB/wiki ]; then fail "no instance: run ./bootstrap.sh first"; echo "RESULT: $FAILS fail(s), $WARNS warn(s)"; exit "$FAILS"; fi
 
+START_STATE=$(python3 tools/kb-workflow.py state-hash) || { fail "cannot capture verification inputs"; exit 1; }
+
 # 1. graph freshness + retrieval eval
 OUT=$(python3 tools/kb-graph.py --check 2>&1); RC=$?
 case $RC in 0) pass "kb-graph: matches wiki content hashes" ;; 2) echo "$OUT" | indent; warn "kb-graph stale: run bin/kb index" ;; *) echo "$OUT" | indent; fail "kb-graph unreadable" ;; esac
@@ -37,6 +39,13 @@ else echo "$OUT" | indent; fail "WP1"; fi
 OUT=$(python3 tools/kb-lint.py --rule WP2 2>&1)
 if [ $? -eq 0 ]; then pass "WP2: inbox files parse, known keys, agent folders, state = ledger"; else echo "$OUT" | indent; fail "WP2: inbox contract"; fi
 
+# 3b. retained undo preimages
+OUT=$(python3 tools/kb-workflow.py undo-health 2>&1)
+if [ $? -eq 0 ]; then pass "undo: required preimages available"; else echo "$OUT" | indent; fail "undo: missing or corrupt preimages"; fi
+
+OUT=$(python3 tools/kb-workflow.py signature-health 2>&1)
+if [ $? -eq 0 ]; then pass "signed approvals: retained receipts verify"; else echo "$OUT" | indent; fail "signed approval receipt mismatch"; fi
+
 # 4. regressions
 if [ -f "$REG" ]; then
   OUT=$(python3 tools/kb-eval.py --regressions "$REG" 2>&1)
@@ -61,6 +70,11 @@ if [ -z "$HITS" ]; then pass "no-network: tools import no network client and cal
 OUT=$(python3 tests/test-kb-loop-e2e.py 2>&1)
 if [ $? -eq 0 ]; then pass "LOOP-E2E: correct -> land -> regressions green -> unland -> case FAILs ($(echo "$OUT" | grep -E '^Ran [0-9]+ tests' | head -1))"
 else echo "$OUT" | tail -20 | indent; fail "LOOP-E2E: test-kb-loop-e2e.py"; fi
+
+if [ "$FAILS" -eq 0 ]; then
+  OUT=$(python3 tools/kb-workflow.py checkpoint --expected-state "$START_STATE" 2>&1)
+  if [ $? -eq 0 ]; then pass "verification checkpoint saved (not human approval)"; else echo "$OUT" | indent; fail "verification inputs changed; checkpoint not saved"; fi
+fi
 
 echo "---"
 echo "RESULT: $FAILS fail(s), $WARNS warn(s)"

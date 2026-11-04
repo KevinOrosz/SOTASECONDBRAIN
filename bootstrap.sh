@@ -26,7 +26,7 @@ echo "second-brain-loop bootstrap"
 command -v python3 >/dev/null || { echo "need python3 (3.9 or newer)" >&2; exit 1; }
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
   || { echo "need python3 >= 3.9, found $(python3 -V 2>&1)" >&2; exit 1; }
-command -v git >/dev/null || { echo "need git (unland reads earlier page versions from it)" >&2; exit 1; }
+command -v git >/dev/null || { echo "need git (package versioning and legacy undo fallback)" >&2; exit 1; }
 say "python3 $(python3 -c 'import platform; print(platform.python_version())') and git found"
 
 # 2. owner id + config
@@ -61,7 +61,7 @@ fi
 [ -f KB/SYSTEM.md ] || { cp templates/SYSTEM.md KB/SYSTEM.md; say "wrote KB/SYSTEM.md (doctrine)"; }
 [ -f evals/regressions.jsonl ] || { cp templates/regressions.jsonl evals/regressions.jsonl; say "wrote evals/regressions.jsonl"; }
 
-# 4. git (unland restores exact earlier bytes from git history)
+# 4. package git history (new lands use object-backed undo)
 if [ ! -d .git ]; then git init -q; say "git init"; fi
 if ! git rev-parse -q --verify HEAD >/dev/null; then
   git add -A && git -c user.name="${GIT_AUTHOR_NAME:-bootstrap}" -c user.email="${GIT_AUTHOR_EMAIL:-bootstrap@localhost}" \

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Feedback upgrade (2026-11-04)
+
+- Default CLI search now shares hybrid retrieval with Porter stemming; `query --keyword` preserves the legacy interface. FTS failures report the actual fallback; the demo eval includes `compost`.
+- Add state-derived `correct next CID`, safe unfilled response templates, next replay/judge selection and stale-validation guidance without skipping gates.
+- Add read-only batch diffs with overlap/blocker reporting, status summaries, successful-verification checkpoints and undo-object health checks.
+- Add preview-first Markdown folder import, explicit category/confidence, immutable source snapshots, duplicate detection, path/symlink refusals and per-file failure reporting. Imports only propose.
+- Make approval targets prompt interactively; retain an explicit script mode and record approval mode. Add optional SSH-signed proposal lands bound to exact input/output hashes; stale and reused signatures fail. Retained receipts are rechecked during verification.
+- Fresh installs now seed one neutral dormant example and discover shipped WIZARD/GURU souls. Preserve existing config and regression history; keep reference rules as opt-in examples.
+- Correct undo/git, private-instance, approval, word-count, release-status and benchmark claims. Document backup completeness, migration, CLI compatibility and signing boundaries in `docs/UPGRADING.md`.
+- Pin CI actions to official immutable commits, disable persisted checkout credentials and show failed test output.
+- Add regression coverage for read-only review, imports, signature drift/reuse, checkpoint mismatch, stemming fallback and correction guidance. Preserve recovery and end-to-end discrimination tests.
+
+**Compatibility:** default `query` JSON uses the hybrid schema; put `--keyword` first for the previous schema. Make approval commands require a TTY unless `APPROVAL=--non-interactive` is explicit. Existing notes, config and case files are not migrated automatically. Version remains 0.2.1 until a maintainer publishes a release.
+
+
 Hardening PR1: recovery.
 
 - Undo works without Git. Every `land` and `unland` stores each touched file's prior bytes, write-once

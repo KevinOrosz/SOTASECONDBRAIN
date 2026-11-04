@@ -14,6 +14,8 @@ suggested_use: CODA builds P0–P3 in order (gazetteer → frontmatter contract 
 
 # Agentic Second Brain — SOTA Spec v2 (the reference instance delta)
 
+> Historical research from a private instance, dated 2026-10-23. Its tools (including `brain-think`), measurements, and deployment rules are not shipped package capabilities. Third-party figures below are dated research claims, not current verification or comparative benchmarks for this repository.
+
 **Status:** DRAFT. Nothing here is final until the owner reviews.
 **Scope:** (1) fact-check the paste, (2) state the verified SOTA pattern, (3) gap it against the reference instance's live KB, (4) hand CODA a phased build with Target/Batch/Metric per phase. Out of scope: multi-user federation, external sync, any hosted product.
 

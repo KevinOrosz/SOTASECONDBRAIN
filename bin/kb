@@ -12,13 +12,16 @@ case "$cmd" in
   eval)     exec python3 "$T/kb-eval.py" "$@" ;;
   index)    python3 "$T/kb-index.py" "$@" && exec python3 "$T/kb-graph.py" ;;
   graph)    exec python3 "$T/kb-graph.py" "$@" ;;
-  query)    exec python3 "$T/kb-query.py" "$@" ;;
+  query)    if [ "${1:-}" = "--keyword" ]; then shift; exec python3 "$T/kb-query.py" "$@"; fi
+            exec python3 "$T/kb-graph-query.py" search "$@" ;;
+  status)   exec python3 "$T/kb-workflow.py" status "$@" ;;
+  adopt-folder) exec python3 "$T/kb-workflow.py" adopt-folder "$@" ;;
   search)   exec python3 "$T/kb-graph-query.py" search "$@" ;;
   ask)      exec python3 "$T/kb-graph-query.py" "$@" ;;
   autolink) exec python3 "$T/kb-autolink.py" "$@" ;;
   doctor)   exec python3 "$T/brain-doctor.py" "$@" ;;
   verify)   exec bash "$HERE/scripts/verify.sh" "$@" ;;
-  test)     rc=0; run() { python3 "$1" >/dev/null 2>&1 && echo "PASS  $(basename "$1")" || { echo "FAIL  $(basename "$1")"; rc=1; }; }
+  test)     rc=0; run() { local out; out=$(python3 "$1" 2>&1) && echo "PASS  $(basename "$1")" || { echo "FAIL  $(basename "$1")"; printf "%s\n" "$out"; rc=1; }; }
             for t in "$HERE"/tests/test-kb-*.py; do case "$t" in *loop-e2e.py) ;; *) run "$t" ;; esac; done
             run "$HERE/tests/test-kb-loop-e2e.py"; exit $rc ;;  # LOOP-E2E last
   help|-h|--help)
@@ -26,9 +29,11 @@ case "$cmd" in
 usage: bin/kb <command> [args]
   lint      check every wiki page header (kb-lint)        index   rebuild search index + graph
   write     inbox proposals, land, unland (kb-write)       graph   rebuild or --check the graph
-  eval      retrieval eval / --regressions FILE            query   keyword search
+  eval      retrieval eval / --regressions FILE            query   hybrid search (--keyword for legacy scorer)
   search    hybrid search over page bodies                 ask     graph verbs: connect|neighbors|provenance|themes
   doctor    structural health report                       autolink  report unlinked mentions (read-only)
+  status    review summary and undo health (read-only)
+  adopt-folder  preview Markdown imports; --apply creates proposals
   correct   owner correction -> gated diff + regression case (kb-correct)
   verify    full health check                              test    run every test suite
 Add --help after any command for its options.

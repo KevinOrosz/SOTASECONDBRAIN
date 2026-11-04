@@ -13,7 +13,7 @@ Each line holds whatever an agent does, as long as the files are only changed th
   every file it touched (`KB/inbox/_ledger.jsonl`). WP1 flags a wiki file whose bytes match no ledger or
   seal entry.
 - **Reversible lands.** Prior bytes are stored by hash in `KB/inbox/_objects/`. An interrupted operation is
-  finished or rolled back from `KB/inbox/_ops/` on the next tool call.
+  finished or rolled back from `KB/inbox/_ops/` on the next recovery-capable tool call. Read-only batch review refuses unfinished operations; `correct next` and `status` do not recover them.
 - **Postcheck rollback.** A land whose rebuilt index, graph, lint, retrieval recall or regressions get worse is
   rolled back byte for byte (exit 3).
 - **Source preservation.** A land hashes every raw source it cites. Verify FAILs if a cited raw file is
@@ -26,7 +26,7 @@ Each line holds whatever an agent does, as long as the files are only changed th
 
 What these do **not** do: they detect changes, they don't prevent them. Anyone with shell access can edit
 files, rewrite the ledger or delete `_objects/`. The ledger is tamper-evident only against edits that skip
-the tools, and only while the ledger file itself is intact. Keep backups or Git history of `KB/`.
+the tools, and only while the ledger file itself is intact. Back up all of `KB/` and `evals/`, including `_objects/`, `_ledger.jsonl`, `_seal.json`, `_ops/`, correction packets and configuration. Wiki pages alone are not a complete backup.
 
 ## 2. Model judgment (outside the tools)
 
@@ -42,8 +42,7 @@ These are only as good as the agent and model that produce them. The tools check
 ## 3. What the owner gate covers
 
 `make land ID=...` is the owner saying "this belongs in my wiki". Before landing, read the proposal and the
-`--dry-run` diff. The gate guarantees that nothing reaches `KB/wiki/` without that act, and that every land
-is recorded and reversible. It does not check content for you: an approved falsehood is still a falsehood,
+`--dry-run` diff. The tools require a matching owner string, but that string is not human authentication. Tool-mediated lands are recorded with preimages while the ledger and objects are retained. It does not check content for you: an approved falsehood is still a falsehood,
 and it now carries your endorsement. Agents must never pass the owner id themselves (`AGENTS.md`).
 
 ## 4. Threat model for inbox inputs
@@ -63,3 +62,15 @@ Treat every proposal, raw file and agent output as untrusted text.
 | Ledger or `_objects/` deleted | Verify reports the loss | No recovery without backups |
 
 Report anything that breaks a line in section 1 as a security issue (`SECURITY.md`).
+
+## Approval modes
+
+`make land` and `make unland` default to `--confirm`; the terminal prompt prevents accidental operation but cannot distinguish an agent from a human controlling the terminal. `APPROVAL=--non-interactive` explicitly selects script mode. Direct CLI calls retain backward-compatible claimed-owner mode. New land, unland, adopt and reseal ledger rows record the approval mode; older rows may not have one.
+
+Optional SSH signatures protect **proposal lands only**. Set `require_signed_lands: true` and `allowed_signers` to an absolute owner-controlled allowed-signers file. The signature covers the exact proposal, staged postimages, current wiki, raw sources, tool bytes, regression file, config, seal and ledger hash. Changed inputs and reuse after a land fail verification. Sign using an isolated owner key; the tool only verifies. See UPGRADING for commands.
+
+Signatures do not protect direct filesystem writes, unland, adopt, reseal, or an attacker able to replace the verifier/config/allowed-signers file. Use OS permissions or a separate approval account for an actual access boundary. Do not give agents the signing key or its unlocked signing agent.
+
+`make status` is read-only. A verification checkpoint proves neither human review nor authenticity; it records the ledger prefix and measurement inputs to avoid silently hiding edits or comparing different benchmarks.
+
+Signed land receipts retain the signed payload and signature in the ledger. Verification checks the signature, ledger position, actor and staged postimage hashes against the currently configured allowed-signers file. Retain historical public keys in that trusted file when rotating keys if old receipts must continue to verify. The ledger grows with signed state manifests; signing is optional. Removing receipts or rewriting local policy remains possible for a same-user attacker.

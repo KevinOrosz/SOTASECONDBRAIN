@@ -1059,3 +1059,7 @@ Lexical plus graph retrieval is enough at this corpus size. GBrain's own default
 - a second human needs scoped access
 
 **Falsifier for the whole spec.** After P2 and P3, if the weekly count of corrections that land as wiki edits is still 0, tooling was never the gap. Attention was. CLERIC owns the next move, not CODA.
+
+## Feedback upgrade amendment (2026-11-04)
+
+The owner authorized onboarding and maintenance upgrades independently of deferred phases 9–13. Current contracts: `bin/kb query` uses hybrid search; internal correction ranking and `--keyword` stay unchanged. Fresh installs seed one neutral dormant case; the historical three-rule table above is reference-instance history, available in `examples/reference-regressions.jsonl`. Existing cases and config are never rewritten by bootstrap. `souls/` holds shipped roles; legacy instance globs remain valid. See UPGRADING and TRUST for guided corrections, read-only review/status, source-preserving imports and optional signed lands. New helper commands reuse the canonical write and correction schemas rather than bypassing them.

@@ -181,8 +181,8 @@ class Regressions(Base):
         cases = [json.loads(x) for x in SEEDS.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(kbe.validate_cases(cases), [])
         self.assertEqual([(c["kind"], c["status"]) for c in cases],
-                         [("artifact", "active"), ("answer", "dormant"), ("answer", "dormant")])
-        self.assertTrue(all(c["origin"].startswith("rule:") for c in cases))
+                         [("answer", "dormant")])
+        self.assertTrue(all(c["origin"].startswith("example:") for c in cases))
 
     def test_09_no_network_or_model_calls(self):
         for name in ("kb-eval.py", "kb_testkit.py"):

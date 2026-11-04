@@ -39,3 +39,5 @@ make unland ID=GURU/YYYY-MM-DD-mulching REASON="undo test"
 ```bash
 make status
 ```
+
+`make land` and `make unland` prompt for `approve`. Review multiple proposals with `bin/kb write list --diff`. For corrections, use `bin/kb correct next C-0001`. Read [upgrade and migration notes](docs/UPGRADING.md) before changing an existing instance.

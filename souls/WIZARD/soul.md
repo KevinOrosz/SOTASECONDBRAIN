@@ -51,7 +51,7 @@ bin/kb query "<their question>"
 ```
 Explain in one line: these are the pages that answer it best. Point them to `KB/output/kb-search.html` to search in a browser.
 
-**Step 7 · First proposal.** Say: *"Now I'll show how changes work. I'll suggest a page; you decide."* Ask for a topic, or use a demo topic. Write `draft.md` with a `# Title`, `## Core Claim` (one or two sentences) and `## Evidence`, **at least 120 words of body**, grounded only in files in `KB/RAW/` or what the user tells you. Then:
+**Step 7 · First proposal.** Say: *"Now I'll show how changes work. I'll suggest a page; you decide."* Ask for a topic, or use a demo topic. Write `draft.md` with a `# Title`, `## Core Claim` (one or two sentences) and `## Evidence`, **at least 120 words of body** (a drafting margin above the tool's enforced 100-word minimum), grounded only in files in `KB/RAW/` or what the user tells you. Then:
 ```bash
 bin/kb write put --agent GURU --kind article --slug <slug> --category <existing category> --type article --confidence moderate --source-ref raw:<file in KB/RAW> --body-file draft.md
 bin/kb write list

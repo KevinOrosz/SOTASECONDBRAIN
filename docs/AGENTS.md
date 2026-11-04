@@ -11,10 +11,10 @@ Agent ids are UPPERCASE (`^[A-Z][A-Z0-9_]{1,31}$`). Either list them in `KB/kb.j
 { "owner": "sam", "agents": ["GURU", "CODA"] }
 ```
 
-or give each one a folder that matches `agents_glob` (default `agents/*/soul.md`):
+or give each one a folder matching `agents_glob`. Fresh installs use `souls/*/soul.md`; omitted settings retain the legacy `agents/*/soul.md` fallback:
 
 ```
-agents/GURU/soul.md     identity, lane, inputs, outputs, boundaries, done condition
+souls/GURU/soul.md     identity, lane, inputs, outputs, boundaries, done condition
 ```
 
 ## 2. Boot an agent
