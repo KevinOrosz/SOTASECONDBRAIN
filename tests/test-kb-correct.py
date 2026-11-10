@@ -102,7 +102,7 @@ class Base(unittest.TestCase):
 
     def open_retrieval(self):  # body-only fact the title-weighted ranker misses
         split = {"points": ["zebrafish evidence lives in first"], "terms": ["zebrafish", "body"]}
-        return self.cli("open", "--q", "zebrafish", "--owner-says", "It is in the first page.",
+        return self.cli("open", "--ranker", "kb-query", "--q", "zebrafish", "--owner-says", "It is in the first page.",
                         "--points-file", self.fx(split))
 
     def to_reviewed(self, opener, target, after):
@@ -345,7 +345,7 @@ class TestLand(Base):
         self.assertEqual((rc, res1.get("hook")), (0, "ok"), res1)
         page = self.root / "KB/wiki/alpha/first.md"
         split = {"points": ["plain prose sentence lives in first"], "terms": ["plain", "prose", "sentence"]}
-        rc, out = self.cli("open", "--q", "plain prose sentence", "--owner-says", "Also in the first page.",
+        rc, out = self.cli("open", "--ranker", "kb-query", "--q", "plain prose sentence", "--owner-says", "Also in the first page.",
                            "--points-file", self.fx(split))
         self.assertEqual((rc, out.get("cid")), (0, "C-0002"), out)
         rc, out = self.cli("diagnose", "C-0002")

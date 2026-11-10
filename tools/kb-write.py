@@ -846,8 +846,12 @@ def compose_article(root: Path, meta: dict, body: str, pid: str, seq: int, today
     need((got["type"], got["confidence"], got["provenance"]) == (meta["type"], meta["confidence"], prov),
          "self-check: read_meta disagrees with the composed header of %s" % rel)
     words = kblint.body_words(h)
-    need(words >= LAND_WORDS[0], "%s: %d body words; land needs at least %d" % (pid, words, LAND_WORDS[0]))
-    warns = [] if LAND_WORDS[1] <= words <= LAND_WORDS[2] else [
+    minimum = 1 if meta["type"] == "fact" else LAND_WORDS[0]
+    need(words >= minimum, "%s: %d body words; land needs at least %d" % (pid, words, minimum))
+    if meta["type"] == "fact":
+        need(bool(CLAIM_RE.search(text) and CLAIM_RE.search(text).group(1).strip()), "fact needs a non-empty Core Claim")
+        need(words <= 200, "fact exceeds 200 body words")
+    warns = [] if meta["type"] == "fact" or LAND_WORDS[1] <= words <= LAND_WORDS[2] else [
         "%s: %d body words, outside %d-%d" % (rel, words, LAND_WORDS[1], LAND_WORDS[2])]
     loose = sorted({m.group(2) for m in autolink.LINK_RE.finditer(text)
                     if autolink._classify(m.group(2), bool(m.group(1)), known | {stem})["kind"]
@@ -1155,6 +1159,7 @@ def postcheck(root: Path, verb: str, base) -> list:
             gate(r.returncode == 0, "kb-eval --regressions: rc %d %s" % (r.returncode, r.stdout.decode()[-300:]))
             notes.append("regressions green")
         else:
+            gate(kb_config.load(root)["answer_policy"] != "require-fresh", "strict answer policy requires the regressions file")
             notes.append("regressions: %s absent, skipped" % REGRESSIONS)
     rep = kblint.lint(root)
     gate(rep["counts"]["fail"] == 0, "kb-lint %d FAIL: %s" % (rep["counts"]["fail"], [
@@ -1284,6 +1289,7 @@ def land_one(root: Path, pid: str, dry: bool, approval=None) -> dict:
                     "autolink unresolved <= %d" % unresolved, "kb-eval --check == 0, recall@6 >= preflight", regress,
                     "kb-lint 0 FAIL", "any miss: restore every captured byte, exit 3"]
             return {"ok": True, "verb": "land", "id": pid, "path": page_rel, "ledger_seq": None, "dry_run": True,
+                    "postimages": {p: b.decode("utf-8") for p, b in staged.items()},
                     "staged": sorted(staged), "sources": sources, "resolves": gaps, "postcheck": plan, "warnings": warns,
                     "diff": unified(root, staged), "approval_payload": approval_payload(root, pid, staged).decode("utf-8")}
         approval_mode = "claimed-owner"

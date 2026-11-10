@@ -74,3 +74,7 @@ Signatures do not protect direct filesystem writes, unland, adopt, reseal, or an
 `make status` is read-only. A verification checkpoint proves neither human review nor authenticity; it records the ledger prefix and measurement inputs to avoid silently hiding edits or comparing different benchmarks.
 
 Signed land receipts retain the signed payload and signature in the ledger. Verification checks the signature, ledger position, actor and staged postimage hashes against the currently configured allowed-signers file. Retain historical public keys in that trusted file when rotating keys if old receipts must continue to verify. The ledger grows with signed state manifests; signing is optional. Removing receipts or rewriting local policy remains possible for a same-user attacker.
+
+## Correction-first amendment (2026-11-09)
+
+See [CORRECTION-FIRST.md](CORRECTION-FIRST.md) for the current policy, facts, MCP adapter and evaluation contract. `require-fresh` blocks unchecked active answer cases against the entire resulting corpus; it does not claim an affected-page dependency analysis. Legacy instances default to warnings. External agents supply replay and judge results; bindings detect drift, not dishonest judgments. New correction records use hybrid retrieval; existing records/cases preserve their stored method. Short facts reuse article proposals and hash-checked supersession. MCP omits owner operations, but does not isolate an agent that already has filesystem access. No real-user effectiveness or GBrain superiority result has been established.

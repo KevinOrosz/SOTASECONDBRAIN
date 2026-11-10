@@ -98,7 +98,7 @@ class TestLoopE2E(unittest.TestCase):
 
         # 1. open -> diagnose -> record -> validate reaches validated
         split = {"points": ["zebrafish evidence lives in first"], "terms": ["zebrafish", "body"]}
-        rc, out = self.correct("open", "--q", "zebrafish", "--owner-says", "It is in the first page.",
+        rc, out = self.correct("open", "--ranker", "kb-query", "--q", "zebrafish", "--owner-says", "It is in the first page.",
                                "--points-file", self.fx(split))
         self.assertEqual((rc, out.get("cid")), (0, "C-0001"), out)
         rc, out = self.correct("diagnose", "C-0001")

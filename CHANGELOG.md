@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Correction-first upgrade (2026-11-09)
+
+- New corrections use the same hybrid ranker as the default query command, record its source version, and tell replay agents which method and k to use. Existing records and cases retain their legacy ranker; explicit `open --ranker kb-query` remains available. Hybrid regression evaluation refuses degraded retrieval.
+- Add `answer_policy: require-fresh`: unchecked active answers fail evaluation, verification and land postchecks. Fresh installs enable it; existing instances default to `warn`. `correct replay-all --proposal ID --fresh` prepares exact staged postimages for external replay before approval. Stale results block the land and restore prior bytes. Unland remains available for recovery.
+- Add short `fact` pages using existing source references, reviewed proposals, hash-checked supersession and undo. Require a Core Claim, at most 200 body words; article minimum remains 100.
+- Add a dependency-free local stdio MCP adapter with five tools: search, read, status, correction-next and propose. No owner operations or arbitrary shell tool.
+- Add versioned retrieval benchmark run/compare commands; reject changed corpus/cases/k, stale indexes, malformed or incomplete results. Document external GBrain result import and a blind answer/correction pilot, without claiming unrun results.
+- Add integration coverage for strict rollback/replay, hybrid versus legacy behavior, MCP transport/path boundaries and benchmark comparability. See `docs/CORRECTION-FIRST.md` for setup, migration and limits.
+
 ### Feedback upgrade (2026-11-04)
 
 - Default CLI search now shares hybrid retrieval with Porter stemming; `query --keyword` preserves the legacy interface. FTS failures report the actual fallback; the demo eval includes `compost`.
