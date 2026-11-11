@@ -5,3 +5,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+# instance backups are unencrypted brain data; never publish them
+*.kbbackup.zip
+*.zip
+.kb-backup-*/

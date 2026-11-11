@@ -6,6 +6,8 @@ cd "$HERE"
 T="$HERE/tools"
 cmd="${1:-help}"; [ $# -gt 0 ] && shift
 case "$cmd" in
+  mcp)      exec python3 "$T/kb-mcp.py" "$@" ;;
+  benchmark) exec python3 "$T/kb-benchmark.py" "$@" ;;
   lint)     exec python3 "$T/kb-lint.py" "$@" ;;
   write)    exec python3 "$T/kb-write.py" "$@" ;;
   correct)  exec python3 "$T/kb-correct.py" "$@" ;;
@@ -14,6 +16,10 @@ case "$cmd" in
   graph)    exec python3 "$T/kb-graph.py" "$@" ;;
   query)    if [ "${1:-}" = "--keyword" ]; then shift; exec python3 "$T/kb-query.py" "$@"; fi
             exec python3 "$T/kb-graph-query.py" search "$@" ;;
+  backup)   exec python3 "$T/kb-backup.py" "$@" ;;
+  answers)  exec python3 "$T/kb-answers.py" "$@" ;;
+  evidence) exec python3 "$T/kb-evidence.py" "$@" ;;
+  brief)    exec python3 "$T/kb-workflow.py" brief "$@" ;;
   status)   exec python3 "$T/kb-workflow.py" status "$@" ;;
   adopt-folder) exec python3 "$T/kb-workflow.py" adopt-folder "$@" ;;
   search)   exec python3 "$T/kb-graph-query.py" search "$@" ;;
@@ -32,6 +38,12 @@ usage: bin/kb <command> [args]
   eval      retrieval eval / --regressions FILE            query   hybrid search (--keyword for legacy scorer)
   search    hybrid search over page bodies                 ask     graph verbs: connect|neighbors|provenance|themes
   doctor    structural health report                       autolink  report unlinked mentions (read-only)
+  mcp       local stdio tools (no owner approvals)
+  benchmark run or compare frozen-corpus retrieval results
+  backup    create, inspect, verify or restore an instance-data archive
+  answers   capture citations, check an answer, audit receipts and group reviews
+  evidence  compare sources, trace dependencies, verify quotes and rehearse search
+  brief     verified session handoff (--since LEDGER_SEQ)
   status    review summary and undo health (read-only)
   adopt-folder  preview Markdown imports; --apply creates proposals
   correct   owner correction -> gated diff + regression case (kb-correct)

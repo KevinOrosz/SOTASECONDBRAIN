@@ -1,6 +1,40 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-11
+
+### Instance backups
+
+- Gitignore `*.zip` / `*.kbbackup.zip` and warn when an archive is written inside the package checkout, so unencrypted brain data is not committed by accident.
+- Add `bin/kb backup create|inspect|verify|restore` for local instance-data archives. Include undo preimages, empty directories and regression cases. Refuse destination collisions, unsafe archive paths and unfinished writer transactions.
+- Add round-trip recovery tests for retrieval and supersession undo, plus corruption and failure-cleanup checks. See [backup scope and recovery instructions](docs/BACKUPS.md).
+
+### Answer citations
+
+- Add `bin/kb answers capture` and `check` for answer receipts bound to approved wiki passages and ledger history.
+- Add `audit` for collection coverage and `queue` for review grouped by affected page. See [commands and limits](docs/ANSWER-CITATIONS.md).
+
+### Evidence review
+
+- Compare two RAW revisions with byte fingerprints and line edits.
+- Trace a source through explicit page dependencies to registered regression cases.
+- Pin an exact quotation and locate it after revision, reporting missing and ambiguous matches.
+- Rehearse a proposal against a specific query using rebuilt base and candidate search indexes. Proposal replay shares the staged overlay builder. See [commands and limits](docs/EVIDENCE-REVIEW.md).
+
+### Fact decisions and session handoffs
+
+- Track exact withdrawn claims per fact. Surface prior decisions on import and review, require a reason to reinstate, and bind that reason to signed approvals.
+- Compare competing proposals and contradictory gaps with the current claim, source excerpts, submitter and prior decision in the review diff.
+- Add optional answer/ask/abstain regression cases with blind replay and independent action classification.
+- Add read-only `bin/kb brief --since SEQ` with source-linked changes and outstanding decisions. See [usage and compatibility](docs/CORRECTION-FIRST.md#withdrawals-and-competing-claims).
+
+### Correction-first upgrade (2026-11-09)
+
+- New corrections use the same hybrid ranker as the default query command, record its source version, and tell replay agents which method and k to use. Existing records and cases retain their legacy ranker; explicit `open --ranker kb-query` remains available. Hybrid regression evaluation refuses degraded retrieval.
+- Add `answer_policy: require-fresh`: unchecked active answers fail evaluation, verification and land postchecks. Fresh installs enable it; existing instances default to `warn`. `correct replay-all --proposal ID --fresh` prepares exact staged postimages for external replay before approval. Stale results block the land and restore prior bytes. Unland remains available for recovery.
+- Add short `fact` pages using existing source references, reviewed proposals, hash-checked supersession and undo. Require a Core Claim, at most 200 body words; article minimum remains 100.
+- Add a dependency-free local stdio MCP adapter with five tools: search, read, status, correction-next and propose. No owner operations or arbitrary shell tool.
+- Add versioned retrieval benchmark run/compare commands; reject changed corpus/cases/k, stale indexes, malformed or incomplete results. Document external GBrain result import and a blind answer/correction pilot, without claiming unrun results.
+- Add integration coverage for strict rollback/replay, hybrid versus legacy behavior, MCP transport/path boundaries and benchmark comparability. See `docs/CORRECTION-FIRST.md` for setup, migration and limits.
 
 ### Feedback upgrade (2026-11-04)
 
@@ -14,7 +48,7 @@
 - Pin CI actions to official immutable commits, disable persisted checkout credentials and show failed test output.
 - Add regression coverage for read-only review, imports, signature drift/reuse, checkpoint mismatch, stemming fallback and correction guidance. Preserve recovery and end-to-end discrimination tests.
 
-**Compatibility:** default `query` JSON uses the hybrid schema; put `--keyword` first for the previous schema. Make approval commands require a TTY unless `APPROVAL=--non-interactive` is explicit. Existing notes, config and case files are not migrated automatically. Version remains 0.2.1 until a maintainer publishes a release.
+**Compatibility:** default `query` JSON uses the hybrid schema; put `--keyword` first for the previous schema. Make approval commands require a TTY unless `APPROVAL=--non-interactive` is explicit. Existing notes, config and case files are not migrated automatically. Released as 0.3.0.
 
 
 Hardening PR1: recovery.

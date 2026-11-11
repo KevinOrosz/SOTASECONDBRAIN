@@ -43,6 +43,7 @@ INDEX_TYPES = ("routing", "taxonomy")
 TYPES = {
     "routing": ("KB/wiki/_index.md", None, 6000),
     "taxonomy": ("<cat>/_index.md", None, 6000),
+    "fact": ("<cat>/<stem>.md", 80, 200),
     "article": ("<cat>/<stem>.md", 400, 2000),
     "source": ("SOURCE_OVERRIDES", None, 15000),
     "position": (None, 400, 800),

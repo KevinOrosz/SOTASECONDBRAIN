@@ -31,6 +31,8 @@ import re
 import sys
 from pathlib import Path
 
+import kb_config
+
 K = 6
 
 # Regression case shape, spec §1.4. Values are accepted types; keys are required unless in CASE_OPTIONAL.
@@ -41,7 +43,7 @@ CASE_SCHEMA = {
     "pages": _L, "targets": _L, "ranker": _S, "k": _I, "failing_version": _S, "landed_version": _S,
     "ledger_seq": (int, type(None)),
 }
-CASE_OPTIONAL = {"retired_reason": _S}
+CASE_OPTIONAL = {"retired_reason": _S, "retrieval_version": _S, "expected_action": _S}
 KINDS, STATUSES = ("answer", "retrieval", "artifact"), ("active", "dormant", "retired")
 GOLD_SOURCES = ("owner-verbatim", "rules", "evidence-scan")
 ID_RE = re.compile(r"^r-(\d{4,})$")
@@ -68,7 +70,10 @@ def corpus_seal(root: Path, skip=()) -> str:
 
 
 def case_hash(case: dict) -> str:
-    return _sha(json.dumps({k: case.get(k) for k in CASE_BIND_KEYS}, sort_keys=True, ensure_ascii=False))
+    keys = CASE_BIND_KEYS + (("retrieval_version",) if "retrieval_version" in case else ())
+    if "expected_action" in case:
+        keys += ("expected_action",)
+    return _sha(json.dumps({k: case.get(k) for k in keys}, sort_keys=True, ensure_ascii=False))
 
 
 def tools_hash(root: Path) -> str:
@@ -100,10 +105,12 @@ def forbidden_hit(answer: str, forbidden) -> list:
     return [f for f in forbidden if f and f.lower() in low]
 
 
-def judge_pass(res, answer: str, forbidden=()) -> tuple:
+def judge_pass(res, answer: str, forbidden=(), expected_action=None) -> tuple:
     """(passed, reason). Only a schema-valid "pass" citing a span found verbatim in the answer passes."""
     if not isinstance(res, dict) or res.get("verdict") not in VERDICTS:
         return False, "malformed: verdict not one of %s" % "/".join(VERDICTS)
+    if expected_action and res.get("observed_action") != expected_action:
+        return False, "judge observed_action must match " + expected_action
     ev = res.get("evidence")
     if not isinstance(ev, str) or not ev.strip() or ev.strip() not in answer:
         return False, "malformed: evidence span missing or not in the answer"
@@ -136,7 +143,7 @@ def fresh_verdicts(root: Path, cases: list) -> dict:
             res = json.loads(jf.read_text(encoding="utf-8"))
         except ValueError:
             res = None
-        out[c["id"]] = judge_pass(res, answer, c["forbidden"])
+        out[c["id"]] = judge_pass(res, answer, c["forbidden"], c.get("expected_action"))
     return out
 
 
@@ -226,6 +233,8 @@ def validate_cases(cases):
             bad.append("%s: I-1 id is not unique and monotonic" % cid)
         else:
             last = int(m.group(1))
+        if c["kind"] in ("retrieval", "answer") and (c["ranker"] not in ("kb-query", "hybrid-graph") or isinstance(c["k"], bool) or c["k"] < 1):
+            bad.append("%s: invalid ranker or k" % cid)
         if c["kind"] == "retrieval":
             if not (set(c["expected"]) <= set(c["evidence_stems"]) | set(c["named_stems"])):
                 bad.append("%s: I-3 gold not within evidence_stems + named_stems" % cid)
@@ -233,6 +242,8 @@ def validate_cases(cases):
                 bad.append("%s: I-3 gold_locked must precede retrieval_at" % cid)
             if not c["expected"] and not c["forbidden"]:
                 bad.append("%s: I-2 retrieval case with no expected and no forbidden" % cid)
+        if "expected_action" in c and (c["kind"] != "answer" or c["expected_action"] not in ("answer", "ask", "abstain")):
+            bad.append("%s: invalid expected_action for this case" % cid)
         if c["kind"] == "artifact":
             if not c["targets"]:
                 bad.append("%s: I-2 artifact case without targets" % cid)
@@ -245,12 +256,23 @@ def validate_cases(cases):
     return bad
 
 
+def ranked(root, query, ranker="hybrid-graph", k=10):
+    if ranker == "hybrid-graph":
+        mod = load("kb-graph-query.py")
+        result = mod.verb_search(root, mod.Graph(root), query, k)
+        if result.get("degraded") or result.get("error"):
+            raise ValueError("hybrid retrieval unavailable: %s" % (result.get("degraded") or result["error"]))
+        return result
+    if ranker != "kb-query":
+        raise ValueError("unknown ranker: " + ranker)
+    mod = load("kb-query.py")
+    arts = json.loads((root / "KB/output/kb-index.json").read_text())["articles"]
+    return {"results": mod.rank(arts, query, mod.build_indegree(arts), k=k)[1],
+            "retrieval": retrieval_method("keyword", "kb-query.py", k, root)}
+
+
 def _case_retrieval(root, c, ctx):
-    if "arts" not in ctx:
-        kbq = load("kb-query.py")
-        index = json.loads((root / "KB" / "output" / "kb-index.json").read_text(encoding="utf-8"))
-        ctx.update(kbq=kbq, arts=index["articles"], indeg=kbq.build_indegree(index["articles"]))
-    _, hits = ctx["kbq"].rank(ctx["arts"], c["q"], ctx["indeg"], k=c["k"])
+    hits = ranked(root, c["q"], c["ranker"], c["k"])["results"]
     got = {h["stem"] for h in hits}
     miss, hit = sorted(set(c["expected"]) - got), sorted(set(c["forbidden"]) & got)
     return [("expected stem not in top-%d: %s" % (c["k"], miss) if miss else ""),
@@ -282,7 +304,8 @@ def regressions(root: Path, path: Path):
             except ValueError:
                 res["violations"].append("line %d: not JSON" % n)
     res["cases"] = len(cases)
-    res["retrieval_method"] = retrieval_method("keyword", "kb-query.py", "per-case", root)
+    res["retrieval_method"] = retrieval_method("per-case", "kb-eval.py", "per-case", root)
+    res["answer_policy"] = kb_config.load(root)["answer_policy"]
     res["violations"] += validate_cases(cases)
     res["invalid"] = len(res["violations"])
     if res["invalid"]:
@@ -326,6 +349,7 @@ def main(argv):
     ap.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--check", action="store_true", help="exit 1 if the new ranker regresses combined recall")
+    ap.add_argument("--answer-policy", choices=("warn", "require-fresh"), help="override evaluation policy; lands use instance configuration")
     ap.add_argument("--regressions", metavar="FILE", help="run the regression suite (spec §1.4) from FILE")
     a = ap.parse_args(argv[1:])
     root = Path(a.root).resolve()
@@ -371,7 +395,8 @@ def main_regressions(a, root):
         print("FAIL  regressions file not found: %s" % path)
         return 1
     reg = regressions(root, path)
-    rc = 1 if reg["invalid"] or reg["failed"] else 0
+    policy = a.answer_policy or reg["answer_policy"]
+    rc = 1 if reg["invalid"] or reg["failed"] or (policy == "require-fresh" and reg["unchecked"]) else 0
     retrieval = None
     if a.check:
         retrieval = run(root)

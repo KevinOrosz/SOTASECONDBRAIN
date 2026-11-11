@@ -12,10 +12,10 @@ The tool never calls a model. It writes one packet per model step under `KB/inbo
 | conflict | `packets/conflict.json` | mid | yes | `{"conflict":bool,"primary":[{"path","line"}],"reason"}` |
 | compile | `packets/compile.json` | mid; attempt 2 high | yes | `{"files":{"KB/wiki/...md":"<whole post-image>"}}` |
 | review | `packets/review.json` (diff + target only) | mid | yes, never the compiler's context | `{"verdict":"APPROVE|REJECT","findings":[{"severity","line","claim"}]}` |
-| replay | `packets/replay-RUN.json` (q + overlay path) | mid | yes, one context per run | markdown answer |
+| replay | `packets/replay-RUN.json` (q + overlay path + ranker + k) | mid | yes, one context per run | markdown answer |
 | judge | `packets/judge-RUN.json` (points + answer) | mid | yes | `{"verdict":"pass|fail|unclear","evidence":"<span quoted verbatim from the answer>","points":[{"point","met","quote"}]}` (anything else counts as FAIL) |
 
-A replay context reads only the overlay it is pointed at. A judge never sees the diff or the owner's words.
+A replay context reads only the overlay it is pointed at. Follow its `ranker` and `k`: `kb-graph-query.py search` for `hybrid-graph`, `kb-query.py` for `kb-query`, both with `--root OVERLAY --k K`. Do not silently change retrieval methods. A judge never sees the diff or the owner's words.
 
 ## Loop
 

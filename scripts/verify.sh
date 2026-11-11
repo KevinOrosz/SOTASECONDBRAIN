@@ -52,7 +52,10 @@ if [ -f "$REG" ]; then
   if [ $? -eq 0 ]; then pass "regressions: $(echo "$OUT" | tail -1 | sed 's/^PASS  //')"; else echo "$OUT" | indent; fail "regressions"; fi
   UNCHECKED=$(echo "$OUT" | tail -1 | grep -oE '[0-9]+ answer UNCHECKED' | grep -oE '^[0-9]+')
   if [ "${UNCHECKED:-0}" -gt 0 ]; then warn "regressions: $UNCHECKED answer case(s) UNCHECKED (no fresh verdict; run bin/kb correct replay-all)"; fi
-else warn "regressions: $REG absent"; fi
+else
+  POLICY=$(python3 -c 'import sys; sys.path.insert(0, "tools"); import kb_config; print(kb_config.load(".")["answer_policy"])')
+  if [ "$POLICY" = require-fresh ]; then fail "regressions: $REG absent (strict policy)"; else warn "regressions: $REG absent"; fi
+fi
 
 # 5. test suites
 for t in tests/test-kb-*.py; do

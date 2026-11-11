@@ -103,8 +103,8 @@ PACKETS = {  # step -> the only keys its packet may carry
     "compile": {"step", "cid", "q", "points", "forbidden", "target", "before", "evidence", "attempt", "tier",
                 "findings"},
     "review": {"step", "cid", "target", "diff"},
-    "replay": {"step", "cid", "run", "q", "overlay"},
-    "judge": {"step", "cid", "run", "points", "answer"},
+    "replay": {"step", "cid", "run", "q", "overlay", "ranker", "k"},
+    "judge": {"step", "cid", "run", "points", "answer", "classify_action"},
 }
 CID_RE = re.compile(r"^C-(\d{4})$")
 CLAIM_RE = re.compile(r"^(## Core Claim\b|\*\*Core Claim:\*\*)", re.M)
@@ -221,6 +221,12 @@ def stem_path(root: Path, stem: str) -> str:
     return ""
 
 
+def action_prompt(run):
+    if run.get("expected_action"):
+        return {"classify_action": "Classify the reply in observed_action: answer, ask, or abstain."}
+    return {}
+
+
 def packet_payload(root: Path, rec: dict, step: str, run: str = "") -> dict:
     if step == "conflict":
         return {"points": rec["points"], "evidence": rec["paragraphs"]}
@@ -237,13 +243,16 @@ def packet_payload(root: Path, rec: dict, step: str, run: str = "") -> dict:
     if step == "replay":
         runs = rec["validate"].get("runs", {})
         need(run in runs, "%s: no replay run %r (have %s)" % (rec["cid"], run, sorted(runs)))
-        return {"q": runs[run]["q"], "overlay": rec["validate"][runs[run]["overlay"] + "_overlay"]}
+        return {"q": runs[run]["q"], "ranker": runs[run].get("ranker", rec.get("ranker", "kb-query")),
+                "k": runs[run].get("k", rec.get("k", K)),
+                "overlay": rec["validate"][runs[run]["overlay"] + "_overlay"]}
     if step == "judge":
         runs = rec["validate"].get("runs", {})
         need(run in runs, "%s: no replay run %r" % (rec["cid"], run))
         answer = cdir(root, rec["cid"]) / "results" / ("replay-%s.md" % run)
         need(answer.is_file(), "%s: replay %s has no result yet" % (rec["cid"], run))
-        return {"points": runs[run]["points"], "answer": answer.read_text(encoding="utf-8")}
+        return {"points": runs[run]["points"], "answer": answer.read_text(encoding="utf-8"),
+                **action_prompt(runs[run])}
     raise Fail(2, "unknown packet step %r (want %s)" % (step, sorted(PACKETS)))
 
 
@@ -298,12 +307,18 @@ def cmd_open(root: Path, a) -> dict:
     n = max([int(CID_RE.match(c).group(1)) for c in cids(root)] or [0]) + 1
     cid = "C-%04d" % n
     agent = a.agent or kb_config.load(root)["owner"]
+    ranker = getattr(a, "ranker", "hybrid-graph")
+    k = 8 if ranker == "hybrid-graph" else K
+    method = kbe.retrieval_method(ranker, "kb-graph-query.py" if ranker == "hybrid-graph" else "kb-query.py", k, root)
     rec = {"cid": cid, "stage": "open", "await": "diagnose", "agent": agent, "opened": stamp(),
+           "ranker": ranker, "k": k, "retrieval_version": method["version"],
            "q": a.q.strip(), "owner_says": a.owner_says, "points": split["points"],
            "forbidden": split.get("forbidden", []), "named_stems": split.get("named_stems", []),
            "terms": [t.lower() for t in split.get("terms", [])]}
     rec["gold_sha256"] = sha256(json.dumps({k: rec[k] for k in ("owner_says", "points", "forbidden", "named_stems")},
                                            sort_keys=True, ensure_ascii=False))
+    if a.expected_action:
+        rec["expected_action"] = a.expected_action
     rec["gold_locked"] = stamp()
     rec.update({"evidence_stems": [], "retrieval_at": "", "topk": [], "paragraphs": [], "diagnosis": {},
                 "compile": {}, "review": {}, "validate": {}, "land": {}, "terminal_row": ""})
@@ -344,11 +359,11 @@ def evidence_scan(root: Path, terms: list) -> list:
     return hits
 
 
-def rank(root: Path, q: str) -> list:
-    idx = root / "KB" / "output" / "kb-index.json"
-    need(idx.is_file(), "KB/output/kb-index.json missing: run kb-index first")
-    arts = json.loads(idx.read_text(encoding="utf-8"))["articles"]
-    return [h["stem"] for h in kbq.rank(arts, q, kbq.build_indegree(arts), k=K)[1]]
+def rank(root: Path, q: str, ranker="kb-query", k=K) -> list:
+    try:
+        return [h["stem"] for h in kbe.ranked(root, q, ranker, k)["results"]]
+    except (OSError, ValueError, KeyError) as exc:
+        raise Fail(2, "retrieval failed: %s" % exc)
 
 
 def cmd_diagnose(root: Path, a) -> dict:
@@ -364,7 +379,7 @@ def cmd_diagnose(root: Path, a) -> dict:
     rec["gold_sha256"] = sha256(json.dumps({"gold": gold, "prior": rec["gold_sha256"]}, sort_keys=True))
     rec["gold_locked"] = stamp()
     save(root, rec)
-    topk = rank(root, rec["q"])
+    topk = rank(root, rec["q"], rec.get("ranker", "kb-query"), rec.get("k", K))
     rec["topk"], rec["retrieval_at"] = topk, later(rec["gold_locked"])
     found = set(gold) & set(topk)
     if not hits:
@@ -380,7 +395,7 @@ def cmd_diagnose(root: Path, a) -> dict:
         "missing": sorted(set(gold) - set(topk)), "ambiguous": bool(found) and label == "reachable-unretrieved"}}
     rec["stage"] = "diagnosed"
     out = {"cid": rec["cid"], "label": label, "gold": gold, "packets": []}
-    if label == "reachable-retrieved":
+    if label == "reachable-retrieved" and not rec.get("expected_action"):
         save(root, rec)
         gid = kbw_put_gap(root, rec, "skill", "skill:brain-think",
                           "Diagnosis reachable-retrieved: the evidence was retrieved and the answer still missed it.")
@@ -545,7 +560,7 @@ def record_run(root: Path, rec: dict, step: str, run: str, res) -> dict:
         res = {"malformed": res}
     _write(root, rec["cid"], "results/judge-%s.json" % run, json.dumps(res, ensure_ascii=False, indent=1) + "\n")
     answer = (cdir(root, rec["cid"]) / "results" / ("replay-%s.md" % run)).read_text(encoding="utf-8")
-    ok, why = kbe.judge_pass(res, answer, rec["validate"]["runs"][run]["forbidden"])
+    ok, why = kbe.judge_pass(res, answer, runs[run]["forbidden"], runs[run].get("expected_action"))
     return {"stage": "reviewed", "judged": run, "counts_as": "PASS" if ok else "FAIL", "why": why}
 
 
@@ -569,8 +584,15 @@ def active_cases(root: Path) -> list:
     return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
-def overlay(root: Path, dest: Path, patch=None) -> Path:
+def overlay(root: Path, dest: Path, patch=None, postimages=None) -> Path:
     """Spec P3 §6 step 10: one rebuilt copy of the instance with no inbox and redacted origins."""
+    # Overlay RAW is a link to the live archive. Keep every configured file in the disposable tree.
+    for key in kb_config.PATH_KEYS:
+        if key == "agents_glob":
+            continue
+        rel = Path(kb_config.rel(root, key))
+        need(not rel.is_absolute() and ".." not in rel.parts and rel.parts[:2] != ("KB", "RAW"),
+             "unsafe overlay path for %s" % key)
     shutil.copytree(root / "KB" / "wiki", dest / "KB" / "wiki")
     src_tools = root / "tools" if (root / "tools").is_dir() else TOOLS
     shutil.copytree(src_tools, dest / "tools", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -592,9 +614,15 @@ def overlay(root: Path, dest: Path, patch=None) -> Path:
         for c in red:
             if c.get("kind") == "answer":  # answer gold never reaches a replay
                 c["expected"], c["forbidden"] = [], []
+                c.pop("expected_action", None)
         p = dest / kb_config.rel(root, "regressions")
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("".join(json.dumps(c, ensure_ascii=False) + "\n" for c in red), encoding="utf-8")
+    for rel, text in (postimages or {}).items():
+        path = (dest / rel).resolve()
+        need(path.is_relative_to(dest.resolve()), "proposal postimage outside overlay")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
     if patch:
         (dest / patch[0]).write_text(patch[1], encoding="utf-8")
     (dest / "KB" / "output").mkdir(parents=True, exist_ok=True)
@@ -613,13 +641,13 @@ def det_check(root: Path, ov: Path) -> int:
     if not reg.is_file():
         return 0
     return subprocess.run([sys.executable, str(ov / "tools" / "kb-eval.py"), "--root", str(ov), "--regressions",
-                           str(reg), "--check"], capture_output=True).returncode
+                           str(reg), "--check", "--answer-policy", "warn"], capture_output=True).returncode
 
 
 def draft_case(root: Path, rec: dict) -> dict:
     """The case validate proves; P3-S3 landed appends it with landed_version and ledger_seq."""
     nums = [int(kbe.ID_RE.match(c["id"]).group(1)) for c in active_cases(root) if kbe.ID_RE.match(c.get("id", ""))]
-    retrieval = rec["diagnosis"]["label"] == "reachable-unretrieved"
+    retrieval = rec["diagnosis"]["label"] == "reachable-unretrieved" and not rec.get("expected_action")
     stem = Path(rec["compile"]["target"]).stem
     return {"id": "r-%04d" % (max(nums or [0]) + 1), "kind": "retrieval" if retrieval else "answer", "q": rec["q"],
             "expected": rec["diagnosis"]["evidence"]["gold"] if retrieval else rec["points"],
@@ -627,7 +655,9 @@ def draft_case(root: Path, rec: dict) -> dict:
             "status": "active", "gold_source": "evidence-scan" if retrieval else "owner-verbatim",
             "gold_locked": rec["gold_locked"], "evidence_stems": rec["evidence_stems"],
             "named_stems": rec["named_stems"], "retrieval_at": rec["retrieval_at"], "pages": [stem], "targets": [],
-            "ranker": "kb-query", "k": K, "failing_version": rec["compile"]["before_sha256"], "landed_version": "",
+            **({"expected_action": rec["expected_action"]} if rec.get("expected_action") else {}),
+            "ranker": rec.get("ranker", "kb-query"), "k": rec.get("k", K),
+            **({"retrieval_version": rec["retrieval_version"]} if "retrieval_version" in rec else {}), "failing_version": rec["compile"]["before_sha256"], "landed_version": "",
             "ledger_seq": None}
 
 
@@ -676,7 +706,7 @@ def cmd_validate(root: Path, a) -> dict:
         v["binding"] = bind_now(root, rec)
         if case["kind"] == "retrieval":
             gold = set(case["expected"])
-            base_top, patched_top = rank(base, rec["q"]), rank(patched, rec["q"])
+            base_top, patched_top = rank(base, rec["q"], case["ranker"], case["k"]), rank(patched, rec["q"], case["ranker"], case["k"])
             v.update(base=base_top, patched=patched_top)
             checks = {"base FAIL": not gold <= set(base_top), "patched flip": gold <= set(patched_top),
                       "det green": v["det_rc"] == 0, "review APPROVE": rec["review"]["verdict"] == "APPROVE"}
@@ -692,9 +722,11 @@ def cmd_validate(root: Path, a) -> dict:
         for i in range(1, PATCHED_RUNS + 1):
             runs["patched-%d" % i] = {"overlay": "patched", "q": rec["q"], "points": rec["points"],
                                       "forbidden": rec["forbidden"]}
+        for spec in runs.values():
+            spec["expected_action"] = rec.get("expected_action")
         for c in affected:
             runs["case-" + c["id"]] = {"overlay": "patched", "q": c["q"], "points": c["expected"],
-                                       "forbidden": c["forbidden"]}
+                                       "expected_action": c.get("expected_action"), "forbidden": c["forbidden"], "ranker": c["ranker"], "k": c["k"]}
         v["runs"] = runs
         rec["await"] = "replay"
         save(root, rec)
@@ -716,7 +748,7 @@ def cmd_validate(root: Path, a) -> dict:
         except ValueError:
             judged = None
         answer = (res_dir / ("replay-%s.md" % r)).read_text(encoding="utf-8")
-        passed[r], why[r] = kbe.judge_pass(judged, answer, spec["forbidden"])
+        passed[r], why[r] = kbe.judge_pass(judged, answer, spec["forbidden"], spec.get("expected_action"))
     v["passed"], v["judged"] = passed, why
     n_patched = sum(passed["patched-%d" % i] for i in range(1, PATCHED_RUNS + 1))
     checks = {"base FAIL": not passed["base"], "patched >=2/3": n_patched >= 2,
@@ -851,16 +883,31 @@ def cmd_replay_all(root: Path, a) -> dict:
         cases = [c for c in active_cases(root) if c.get("kind") == "answer" and c.get("status") in ("active", "dormant")]
         need(cases, "no answer cases (active or dormant) to replay")
         tmp = Path(tempfile.mkdtemp(prefix="kb-replay-all-"))
-        ov = overlay(root, tmp / "live")
+        postimages = None
+        proposal = getattr(a, "proposal", None)
+        if proposal:
+            writer = _load("kb-write.py")
+            writer.configure(root)
+            with writer.locked(root):
+                preview = writer.land_one(root, proposal, True)
+            postimages = preview["postimages"]
+        ov = overlay(root, tmp / "live", postimages=postimages)
         d.mkdir(parents=True, exist_ok=True)
-        man.write_text(json.dumps({"overlay": str(ov), "runs": {c["id"]: {
-            "q": c["q"], "points": c["expected"], "forbidden": c["forbidden"], "status": c["status"],
-            "binding": kbe.binding(root, c)} for c in cases}},
+        man.write_text(json.dumps({"overlay": str(ov), "proposal": getattr(a, "proposal", None),
+            "live_binding": {c["id"]: kbe.binding(root, c) for c in cases}, "runs": {c["id"]: {
+            "q": c["q"], "points": c["expected"], "forbidden": c["forbidden"], "status": c["status"], "expected_action": c.get("expected_action"),
+            "ranker": c["ranker"], "k": c["k"],
+            "binding": kbe.binding(ov, c)} for c in cases}},
             ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     m = json.loads(man.read_text(encoding="utf-8"))
+    need(m.get("proposal") == getattr(a, "proposal", None), "replay target changed; use --fresh")
     now = {c["id"]: c for c in active_cases(root)}
+    ov = Path(m["overlay"])
+    if ov.exists():
+        need(not any(kbe.stale(run.get("binding"), kbe.binding(ov, now[cid])) for cid, run in m["runs"].items() if cid in now),
+             "replay overlay changed; rerun with --fresh")
     moved = sorted(cid for cid, run in m["runs"].items()
-                   if cid not in now or kbe.stale(run.get("binding"), kbe.binding(root, now[cid])))
+                   if cid not in now or kbe.stale(m.get("live_binding", {}).get(cid, run.get("binding")), kbe.binding(root, now[cid])))
     need(not moved, "replay-all is stale for %s (corpus, case or tools changed); rerun with --fresh" % ", ".join(moved))
     pending, passed, failed = [], [], []
     for cid, run in m["runs"].items():
@@ -870,12 +917,12 @@ def cmd_replay_all(root: Path, a) -> dict:
                 res = json.loads(jf.read_text(encoding="utf-8"))
             except ValueError:
                 res = None  # malformed counts as FAIL
-            ok = kbe.judge_pass(res, ans.read_text(encoding="utf-8"), run["forbidden"])[0]
+            ok = kbe.judge_pass(res, ans.read_text(encoding="utf-8"), run["forbidden"], run.get("expected_action"))[0]
             (passed if ok else failed).append(cid)
             continue
-        pk = {"step": "replay", "cid": "replay-all", "run": cid, "q": run["q"], "overlay": m["overlay"]} if not ans.is_file() \
+        pk = {"step": "replay", "cid": "replay-all", "run": cid, "q": run["q"], "overlay": m["overlay"], "ranker": run.get("ranker", "kb-query"), "k": run.get("k", K)} if not ans.is_file() \
             else {"step": "judge", "cid": "replay-all", "run": cid, "points": run["points"],
-                  "answer": ans.read_text(encoding="utf-8")}
+                  "answer": ans.read_text(encoding="utf-8"), **action_prompt(run)}
         extra = set(pk) - PACKETS[pk["step"]]
         need(not extra, "packet carries keys outside its whitelist: %s" % sorted(extra))
         name = d / "packets" / ("%s-%s.json" % (pk["step"], cid))
@@ -945,6 +992,8 @@ def cmd_next(root: Path, a) -> dict:
         templates = {"conflict": {"conflict": None, "primary": [], "reason": ""},
                      "compile": {"files": {}}, "review": {"verdict": "", "findings": []},
                      "judge": {"verdict": "", "evidence": ""}, "replay": ""}
+        if step == "judge" and packet.get("classify_action"):
+            templates[step]["observed_action"] = ""
         out["result_template"] = templates[step]
         if a.write_template:
             name = "next-%s%s.%s" % (step, "-" + run if run else "", "md" if step == "replay" else "json")
@@ -979,6 +1028,8 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--root", default=str(ROOT))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write-template", action="store_true", help="next: create an unfilled response template, never overwrite")
+    ap.add_argument("--expected-action", choices=("answer", "ask", "abstain"), help="open: require an independently classified response action")
+    ap.add_argument("--ranker", choices=("hybrid-graph", "kb-query"), default="hybrid-graph", help="open: retrieval method; kb-query is explicit legacy mode")
     ap.add_argument("--q")
     ap.add_argument("--owner-says")
     ap.add_argument("--points-file")
@@ -987,6 +1038,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--run")
     ap.add_argument("--reason")
     ap.add_argument("--ledger-seq", type=int)
+    ap.add_argument("--proposal", help="replay-all: judge the exact proposed postimages before owner land")
     ap.add_argument("--fresh", action="store_true")
     return ap
 

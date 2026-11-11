@@ -3,7 +3,7 @@
 > For any builder: a coding agent in any harness, any model, or a human engineer.
 >
 > **Development continues in this package** (`second-brain-loop/`). Sessions 1–5 were built inside a private reference instance and extracted here on 2026-10-26; commit ids in §4 belong to that instance's history, not this repo's. From session 6 on, build, test and commit here.
-> Updated 2026-11-04. Implementation status: lean path complete; release and owner acceptance are separate from test results. See CHANGELOG Unreleased and UPGRADING for the feedback upgrade. **Lean path complete: sessions 1–8 done (0.2.0).**
+> Updated 2026-11-09. Implementation status: lean path complete; release and owner acceptance are separate from test results. See CHANGELOG Unreleased and UPGRADING for the feedback upgrade. **Lean path complete: sessions 1–8 done (0.2.0).**
 
 ## 1. What this is
 
@@ -11,7 +11,7 @@ A Git-backed Markdown knowledge base (`KB/wiki`) with deterministic, stdlib-only
 
 - **Typed pages.** Every wiki page declares a `**Type:**` header. `tools/kb-lint.py` checks the contract with zero LLM calls.
 - **Gated write-back.** Agents write only to `KB/inbox/`. One human owner endorses each land. Every write is hashed into an append-only ledger.
-- **Correction compiler.** Each owner correction becomes one gated diff plus a permanent regression case. Every later land must pass it.
+- **Correction compiler.** Each owner correction becomes one gated diff plus a permanent regression case. Deterministic cases gate later lands; answer freshness follows the configured policy.
 
 Nothing in the tools names a person, a model, a vendor or a harness. Instance identity lives in one file (§3).
 
@@ -79,7 +79,7 @@ Session 8 shipped `tests/test-kb-loop-e2e.py`: on `kb_testkit.fixture(..., regre
 
 **Next.** Advanced phases 9–13 still wait for 3 real discriminating corrections. The owner-authorized feedback upgrade addresses maintenance and onboarding independently; it does not establish that milestone.
 
-**Carried notes.** (a) `unland` of a correction leaves its case active, so later lands fail until the fix is relanded or the case retired. (b) New lands store exact preimages in `_objects/`; supersede undo works with `KB/` ignored. Git is retained as a fallback for older lands. (c) No `skills/REGISTRY.md`, `brain-think` or Write-Back Protocol ships; spec P3 row 55 waits for session 10. (d) `replay-all` is manual, never a land gate. (e) `docs/RESEARCH.md` line 31 names third-party tools. (f) `bin/kb query` now uses hybrid search with stemming; `--keyword` and internal correction rankers preserve legacy behavior.
+**Carried notes.** (a) `unland` of a correction leaves its case active, so later lands fail until the fix is relanded or the case retired. (b) New lands store exact preimages in `_objects/`; supersede undo works with `KB/` ignored. Git is retained as a fallback for older lands. (c) No `skills/REGISTRY.md`, `brain-think` or Write-Back Protocol ships; spec P3 row 55 waits for session 10. (d) External replay remains manual; `answer_policy=require-fresh` gates lands on fresh results, with proposal replay before approval. (e) `docs/RESEARCH.md` line 31 names third-party tools. (f) Default queries and new corrections use hybrid search. Existing cases and records keep their recorded legacy method.
 
 ## 6. Rules for every session
 

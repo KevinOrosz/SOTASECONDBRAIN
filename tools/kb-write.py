@@ -616,6 +616,8 @@ def cmd_put(root: Path, a) -> dict:
         extra["resolves"] = a.resolves
     check_refs(root, refs, "article")
     meta["dedupe_key"] = dedupe_key("article", "", "%s/%s" % (category, stem), h1(body) or a.slug)
+    if typ == "fact":
+        meta["dedupe_key"] = sha256(json.dumps([category, stem, claim_of(body)], ensure_ascii=False).encode())[:12]
     meta.update({"type": typ, "category": category, "stem": stem})
     meta.update(extra)
     return store(root, "put", a.agent, a.slug, meta, body)
@@ -712,6 +714,93 @@ def cmd_decide(root: Path, a) -> dict:
     return {"ok": True, "verb": a.verb, "id": a.id, "path": rel, "ledger_seq": seq}
 
 
+def fact_source(root, text):
+    header = kblint.meta_of(kblint.parse_header(text))
+    provenance = header.get("provenance") or ""
+    refs = {"raw:" + name for name in prov.raw_refs(text)}
+    match = re.match(r"inbox (\S+) ", provenance)
+    if match and ID_RE.fullmatch(match[1]):
+        rel = "%s/%s.md" % (INBOX, match[1])
+        if (root / rel).is_file():
+            proposal, _, _ = read_proposal(root, rel)
+            refs.update(proposal["source_refs"])
+    return {"provenance": provenance, "source_refs": sorted(refs)}
+
+
+def fact_change(root, path, before, after, meta):
+    """Capture claim text while the exact preimage is still available."""
+    def claim(text):
+        if not text or kblint.meta_of(kblint.parse_header(text))["type"] != "fact":
+            return None
+        return claim_of(text)
+    old, new = claim(before), claim(after)
+    if old == new:
+        return None
+    return {"path": path, "old": old, "new": new, "source_refs": meta.get("source_refs", []),
+            "proposed_by": meta["proposed_by"], "old_source": fact_source(root, before) if old else None,
+            "new_source": fact_source(root, after) if new else None}
+
+
+def withdrawn_claims(rows):
+    withdrawn = {}
+    undone = {row.get("undoes_land") for row in rows if row["event"] == "unland"}
+    for row in rows:
+        if row["seq"] in undone:
+            continue
+        change = row.get("fact_change")
+        if change:
+            path = change["path"]
+            if change["old"]:
+                withdrawn[path, change["old"]] = row
+            withdrawn.pop((path, change["new"]), None)
+    return withdrawn
+
+
+def source_excerpts(root, refs):
+    excerpts = []
+    for ref in refs:
+        path = prov.raw_path(root, ref[4:]) if ref.startswith("raw:") else None
+        if path:
+            with path.open(encoding="utf-8", errors="replace") as fp:
+                excerpts.append({"ref": ref, "opening_excerpt": fp.read(400)})
+    return excerpts
+
+
+def fact_reviews(root, rows):
+    groups = {}
+    for pid, rel, meta in proposals(root):
+        if meta.get("state") != "open":
+            continue
+        if meta["kind"] == "gap" and meta.get("gap_kind") == "contradictory":
+            key = meta["target"].removeprefix("wiki:")
+        elif meta.get("type") == "fact":
+            key = meta["stem"]
+        else:
+            continue
+        _, body, _ = read_proposal(root, rel)
+        groups.setdefault(key, []).append({"id": pid, "kind": meta["kind"], "source": rel,
+            "claim": claim_of(body) if meta["kind"] != "gap" else body.strip(),
+            "source_refs": meta["source_refs"], "source_excerpts": source_excerpts(root, meta["source_refs"]), "submitted_by": meta["proposed_by"],
+            "submitted_at": meta["proposed_at"], "confidence": meta["confidence"]})
+    reviews = []
+    for stem, pending in groups.items():
+        page = article_path(root, stem)
+        current = claim_of(page.read_text()) if page else None
+        claims = {p["claim"] for p in pending if p["kind"] != "gap"}
+        if current:
+            claims.add(current)
+        if len(claims) < 2 and not any(p["kind"] == "gap" for p in pending):
+            continue
+        path = page.relative_to(root).as_posix() if page else None
+        prior = next((r for r in reversed(rows) if path and path in r["files"]
+                      and r["event"] in ("land", "unland", "adopt")), None)
+        current_refs = fact_source(root, page.read_text())["source_refs"] if page else []
+        reviews.append({"current_sources": current_refs, "current_excerpts": source_excerpts(root, current_refs),
+                        "target": stem, "current": current, "source": path, "pending": pending,
+                        "last_decision": {k: prior[k] for k in ("seq", "event", "ts", "actor", "id")} if prior else None})
+    return reviews
+
+
 def cmd_list(root: Path, a) -> dict:
     need(a.since is None or iso_date(a.since), "--since %r is not YYYY-MM-DD" % a.since, code=1, error="usage")
     need(a.state is None or a.state in STATES, "--state %r not in %s" % (a.state, list(STATES)), code=1,
@@ -740,7 +829,7 @@ def cmd_list(root: Path, a) -> dict:
             except Fail as exc:
                 item["review_error"] = exc.detail
         overlaps = {p: ids for p, ids in touched.items() if len(ids) > 1}
-        return {"ok": True, "verb": "list", "items": items, "overlaps": overlaps}
+        return {"ok": True, "verb": "list", "items": items, "overlaps": overlaps, "fact_reviews": fact_reviews(root, read_ledger(root))}
     return {"ok": True, "verb": "list", "items": items}
 
 
@@ -846,8 +935,12 @@ def compose_article(root: Path, meta: dict, body: str, pid: str, seq: int, today
     need((got["type"], got["confidence"], got["provenance"]) == (meta["type"], meta["confidence"], prov),
          "self-check: read_meta disagrees with the composed header of %s" % rel)
     words = kblint.body_words(h)
-    need(words >= LAND_WORDS[0], "%s: %d body words; land needs at least %d" % (pid, words, LAND_WORDS[0]))
-    warns = [] if LAND_WORDS[1] <= words <= LAND_WORDS[2] else [
+    minimum = 1 if meta["type"] == "fact" else LAND_WORDS[0]
+    need(words >= minimum, "%s: %d body words; land needs at least %d" % (pid, words, minimum))
+    if meta["type"] == "fact":
+        need(bool(CLAIM_RE.search(text) and CLAIM_RE.search(text).group(1).strip()), "fact needs a non-empty Core Claim")
+        need(words <= 200, "fact exceeds 200 body words")
+    warns = [] if meta["type"] == "fact" or LAND_WORDS[1] <= words <= LAND_WORDS[2] else [
         "%s: %d body words, outside %d-%d" % (rel, words, LAND_WORDS[1], LAND_WORDS[2])]
     loose = sorted({m.group(2) for m in autolink.LINK_RE.finditer(text)
                     if autolink._classify(m.group(2), bool(m.group(1)), known | {stem})["kind"]
@@ -1155,6 +1248,7 @@ def postcheck(root: Path, verb: str, base) -> list:
             gate(r.returncode == 0, "kb-eval --regressions: rc %d %s" % (r.returncode, r.stdout.decode()[-300:]))
             notes.append("regressions green")
         else:
+            gate(kb_config.load(root)["answer_policy"] != "require-fresh", "strict answer policy requires the regressions file")
             notes.append("regressions: %s absent, skipped" % REGRESSIONS)
     rep = kblint.lint(root)
     gate(rep["counts"]["fail"] == 0, "kb-lint %d FAIL: %s" % (rep["counts"]["fail"], [
@@ -1209,7 +1303,7 @@ def run_hook(root: Path, cid: str, seq: int) -> str:
 
 # ---------- land / unland ----------
 
-def approval_payload(root: Path, pid: str, staged: dict) -> bytes:
+def approval_payload(root: Path, pid: str, staged: dict, reinstate="") -> bytes:
     """Sign exact bytes, base state, source state and ledger position. No signing key is read."""
     def tree(path):
         return {p.relative_to(root).as_posix(): sha256(p.read_bytes())
@@ -1221,6 +1315,8 @@ def approval_payload(root: Path, pid: str, staged: dict) -> bytes:
                "sources": tree(root / "KB/RAW"), "tools": tree(root / "tools"),
                "regressions_hash": file_hash(root, REGRESSIONS),
                "post": {p: sha256(data) if data is not None else None for p, data in staged.items()}}
+    if reinstate:
+        payload["reinstate_reason"] = reinstate
     return (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
 
 
@@ -1277,6 +1373,15 @@ def land_one(root: Path, pid: str, dry: bool, approval=None) -> dict:
             else:
                 warns.append("resolves %s: %s, not open; left as is" % (meta["resolves"], state))
         unresolved = autolink.scan(root / "KB" / "wiki")["unresolved_occurrences"]
+        page_path = root / page_rel
+        change = fact_change(root, page_rel, page_path.read_text() if page_path.exists() else "", page, meta)
+        blocked = withdrawn_claims(rows).get((page_rel, claim_of(page))) if meta["kind"] == "article" else None
+        reason = (getattr(approval, "reinstate", "") or "").strip()
+        if blocked:
+            warns.append("Claim withdrawn at ledger #%d; reinstatement requires --reinstate REASON" % blocked["seq"])
+            need(dry or reason, warns[-1])
+        if reason:
+            need(blocked, "--reinstate only applies to a withdrawn claim")
         if dry:
             regress = ("kb-eval --regressions %s == 0" % REGRESSIONS if (root / REGRESSIONS).is_file()
                        else "kb-eval --regressions: %s absent, skipped" % REGRESSIONS)
@@ -1284,8 +1389,9 @@ def land_one(root: Path, pid: str, dry: bool, approval=None) -> dict:
                     "autolink unresolved <= %d" % unresolved, "kb-eval --check == 0, recall@6 >= preflight", regress,
                     "kb-lint 0 FAIL", "any miss: restore every captured byte, exit 3"]
             return {"ok": True, "verb": "land", "id": pid, "path": page_rel, "ledger_seq": None, "dry_run": True,
+                    "postimages": {p: b.decode("utf-8") for p, b in staged.items()},
                     "staged": sorted(staged), "sources": sources, "resolves": gaps, "postcheck": plan, "warnings": warns,
-                    "diff": unified(root, staged), "approval_payload": approval_payload(root, pid, staged).decode("utf-8")}
+                    "diff": unified(root, staged), "approval_payload": approval_payload(root, pid, staged, reason).decode("utf-8")}
         approval_mode = "claimed-owner"
         receipt = None
         if approval is not None:
@@ -1293,7 +1399,7 @@ def land_one(root: Path, pid: str, dry: bool, approval=None) -> dict:
             signature = getattr(approval, "signature", None)
             need(not cfg.get("require_signed_lands") or signature, "signed land required by instance configuration")
             if signature:
-                payload = approval_payload(root, pid, staged)
+                payload = approval_payload(root, pid, staged, reason)
                 signed_bytes = Path(signature).read_bytes()
                 verify_signature(root, payload, signed_bytes, owner(root))
                 receipt = {"payload": payload.decode("utf-8"), "signature": signed_bytes.decode("ascii")}
@@ -1318,6 +1424,10 @@ def land_one(root: Path, pid: str, dry: bool, approval=None) -> dict:
             prior = {p: op.pre(p) for p in staged}
             files[rel], prior[rel] = sha256(data), sha256(old)
             extra = {"sources": sources, "approval_mode": approval_mode}
+            if change:
+                extra["fact_change"] = change
+            if blocked:
+                extra["reinstates"] = {"seq": blocked["seq"], "reason": reason}
             if receipt is not None:
                 extra["approval"] = receipt
             if cid and not HOOK.is_file():
@@ -1382,6 +1492,11 @@ def cmd_unland(root: Path, a) -> dict:
             staged.update({p: back[p] for p in reverse})
         dirty = sorted(set(staged) & set(drift(root, rows)))
         need(not dirty, "WP1 not clean on %s: adopt first" % ", ".join(dirty))
+        withdraw = getattr(a, "withdraw_fact", False)
+        need(not withdraw or meta.get("type") == "fact", "--withdraw-fact requires a landed fact")
+        restored = staged[page_rel]
+        change = fact_change(root, page_rel, (root / page_rel).read_text(),
+                             restored.decode("utf-8") if restored is not None else "", meta)
         op = Op(root, "unland", a.id, list(staged) + list(DERIVED) + [rel], "after-proposal")
         try:
             apply(root, "unland", staged, None, op)
@@ -1393,7 +1508,8 @@ def cmd_unland(root: Path, a) -> dict:
             prior = {p: op.pre(p) for p in staged}
             files[rel], prior[rel] = sha256(data), sha256(old)
             seq = append_ledger(root, "unland", "unland", a.id, owner(root), meta["origin"], files, prior,
-                                reason=a.reason.strip(), extra={"approval_mode": getattr(a, "approval_mode", "claimed-owner")})
+                                reason=a.reason.strip(), extra={"approval_mode": getattr(a, "approval_mode", "claimed-owner"),
+                                "undoes_land": row["seq"], **({"fact_change": change} if withdraw and change else {})})
             op.step("after-ledger")
             _write(root, rel, data, "unland")
             op.step("after-proposal")
@@ -1471,6 +1587,8 @@ def parser() -> argparse.ArgumentParser:
         group = target.add_mutually_exclusive_group()
         group.add_argument("--confirm", action="store_true", help="interactive accident-prevention prompt, not authentication")
         group.add_argument("--non-interactive", action="store_true", help="explicit script mode; claimed owner only")
+    sub.choices["unland"].add_argument("--withdraw-fact", action="store_true", help="remember the removed fact claim as withdrawn")
+    sub.choices["land"].add_argument("--reinstate", metavar="REASON")
     sub.choices["land"].add_argument("--signature", help="SSH signature over the dry-run approval_payload")
     return ap
 
@@ -1518,8 +1636,12 @@ def main(argv=None) -> int:
                                                 it["proposed_at"]))
             if "preview" in it:
                 print(it["preview"]["diff"])
+                for warning in it["preview"]["warnings"]:
+                    print("  " + warning)
             if "review_error" in it:
                 print("  BLOCKED: " + it["review_error"])
+        for review in out.get("fact_reviews", []):
+            print(json.dumps(review, indent=2, ensure_ascii=False))
         if out.get("overlaps"):
             print("Overlapping paths (review each base again before landing):")
             print(json.dumps(out["overlaps"], indent=2))
@@ -1527,6 +1649,8 @@ def main(argv=None) -> int:
     else:
         if out.get("dry_run"):
             print(out["diff"])
+            for warning in out["warnings"]:
+                print(warning)
         print("%s %s -> %s%s%s" % (a.verb, out["id"] or "-", out["path"],
                                    "" if out["ledger_seq"] is None else " (ledger %d)" % out["ledger_seq"],
                                    " · %d file(s)" % out["count"] if "count" in out else ""))

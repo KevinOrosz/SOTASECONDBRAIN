@@ -85,6 +85,10 @@ bin/kb query "your question"
 
 It retrieves candidate pages using hybrid search with Porter stemming, so `compost` can find `composting`. Read the pages to answer. `bin/kb query --keyword "your question"` retains the legacy scorer and JSON format. The browser dashboard at `KB/output/kb-search.html` has its own search implementation; results can differ.
 
+When a source changes, use the [evidence review guide](docs/EVIDENCE-REVIEW.md) to compare revisions, find dependent pages, check quotations, and preview a proposed fix in search.
+
+To revisit an answer after its sources change, [capture its wiki citations and audit the saved receipt](docs/ANSWER-CITATIONS.md).
+
 ### Step 7 · Let agents suggest changes
 
 An agent (or a person) writes a proposal into the inbox. It never edits the wiki directly.
@@ -110,7 +114,7 @@ The make targets display a confirmation prompt. Use the real ID from `bin/kb wri
 
 ### Step 9 · Fix a wrong answer for good
 
-When the brain answers something wrong, follow **`docs/CORRECTION-TUTORIAL.md`**. Use `bin/kb correct next C-0001` to see the next packet and command. The fix lands as a reviewed edit plus a regression test. Deterministic cases gate future lands; answer cases also need fresh external replay and judgment. Real correction time has not yet been measured.
+When the brain answers something wrong, follow **`docs/CORRECTION-TUTORIAL.md`**. Use `bin/kb correct next C-0001` to see the next packet and command. The fix lands as a reviewed edit plus a regression test. Deterministic cases gate future lands. Fresh installs also block lands with unchecked active answer cases; use proposal replay before approval. Existing instances retain warning mode until opted in. See [correction safeguards and integrations](docs/CORRECTION-FIRST.md). Real correction time has not yet been measured.
 
 ### Step 10 · Stay healthy
 
@@ -154,7 +158,7 @@ git pull       # get updates to the tools
 | **wiki** | `KB/wiki/` — the approved pages, one Markdown file each, grouped in category folders. |
 | **raw source** | A file in `KB/RAW/` that pages are written from. Pages cite it in `**Sources:**`. |
 | **header** | The `**Key:** value` lines under a page's title (Category, Sources, Updated, Type, ...). |
-| **type** | What kind of page it is: `article`, `taxonomy` (a category index), `routing` (the top index), `source`, `position`, `gateway`. |
+| **type** | What kind of page it is: `article`, `fact`, `taxonomy` (a category index), `routing` (the top index), `source`, `position`, `gateway`. |
 | **lint** | An automatic check that every page header follows the rules (`bin/kb lint`). |
 | **owner** | The one person allowed to approve changes. Set once in `KB/kb.json`. |
 | **agent** | Anyone allowed to propose: an AI assistant or a person, named in UPPERCASE (`GURU`). |
@@ -165,7 +169,7 @@ git pull       # get updates to the tools
 | **hash** | A fingerprint of a file's exact bytes (SHA-256). Any edit changes it. |
 | **seal** | The first snapshot of every page's hash. Later edits must match the ledger or the seal. |
 | **WP1 / WP2** | Two lint rules: WP1 = no unrecorded wiki edits; WP2 = inbox files are well-formed. |
-| **regression case** | A saved test (in `evals/regressions.jsonl`) that a past mistake never comes back. Every land must pass them all. |
+| **regression case** | A saved check for a past mistake. Deterministic failures block lands; answer freshness follows the configured policy. |
 | **retrieval eval** | A small hand-written question set checking that search still finds the right pages. |
 | **correction** | An owner's "that answer was wrong", compiled into one gated page diff plus one regression case (`bin/kb correct`). |
 | **graph** | `KB/output/kb-graph.json` — pages, links and sources as a network, for `bin/kb ask`. |
@@ -182,13 +186,13 @@ KB/  evals/        your instance (created by bootstrap; ignored by git)
 ```
 
 Your instance (`KB/`, `evals/`) is listed in `.gitignore`, so updating the package never touches
-your notes. Undo of new lands uses saved preimages, not git. Back up the whole instance, including `KB/inbox/` and `evals/`. Want your notes versioned? Keep `KB/` in its own git repo, or remove it from `.gitignore`.
+your notes. Undo of new lands uses saved preimages, not git. Use the [backup and recovery commands](docs/BACKUPS.md) to preserve the instance, including `KB/inbox/` and `evals/`. Want your notes versioned? Keep `KB/` in its own git repo, or remove it from `.gitignore`.
 
 ### Settings
 
 `KB/kb.json` (created from `kb.example.json`). Every key is optional:
 `owner`, `agents`, `agents_glob`, `dashboard`, `regressions`, `baseline`, `catalog`, `registry`,
-`router`, `spine`. See `docs/HANDOFF.md` §3 for what each does.
+`router`, `spine`, `answer_policy`. See `docs/HANDOFF.md` §3 for what each does.
 
 ### Using it with AI agents
 
@@ -203,7 +207,7 @@ After the quickstart you have a working, checked knowledge base:
 - **A typed wiki** (`KB/wiki/`) whose every page header is linted, with a search page and a link graph.
 - **A workflow gate.** Tool-mediated land and unland operations are fingerprinted in the ledger. Shell access can bypass this workflow.
 - **A memory for mistakes.** Each correction you make becomes one small page fix plus a regression case,
-  and every later land must keep passing it.
+  with deterministic gates and configurable fresh-answer enforcement.
 - **Proof the loop closes.** `tests/test-kb-loop-e2e.py` (last in `make test` and `make verify`) runs a
   correction end to end on a throwaway copy, then undoes the fix and checks that its case now fails.
 
@@ -219,6 +223,6 @@ After the quickstart you have a working, checked knowledge base:
 
 ### Status
 
-Version 0.2.1; the [Unreleased upgrades](CHANGELOG.md#unreleased) are documented in [UPGRADING.md](docs/UPGRADING.md). The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
+Version 0.3.0; the [0.3.0 upgrades](CHANGELOG.md#030--2026-11-11) are documented in [UPGRADING.md](docs/UPGRADING.md). The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
 correction compiler, end-to-end loop test) is complete. Further phases wait until three real corrections
 have landed (`docs/HANDOFF.md` §5). MIT licensed.

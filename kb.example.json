@@ -1,4 +1,5 @@
 {
+  "answer_policy": "require-fresh",
   "owner": "owner",
   "title": "Knowledge Base",
   "agents": [

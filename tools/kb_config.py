@@ -11,6 +11,7 @@ from pathlib import Path
 
 CONFIG = "KB/kb.json"
 DEFAULTS = {
+    "answer_policy": "warn",  # legacy default; require-fresh blocks unchecked active answers
     "owner": "owner",                                # the one human id that endorses lands (lowercase)
     "title": "Knowledge Base",                       # shown in the search dashboard header
     "require_signed_lands": False,
@@ -35,6 +36,8 @@ def load(root: Path) -> dict:
     if p.is_file():
         data = json.loads(p.read_text(encoding="utf-8"))
         cfg.update({k: v for k, v in data.items() if k in cfg})
+    if cfg["answer_policy"] not in ("warn", "require-fresh"):
+        raise ValueError("answer_policy must be warn or require-fresh")
     return cfg
 
 
