@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-11
 
 ### Instance backups
 
+- Gitignore `*.zip` / `*.kbbackup.zip` and warn when an archive is written inside the package checkout, so unencrypted brain data is not committed by accident.
 - Add `bin/kb backup create|inspect|verify|restore` for local instance-data archives. Include undo preimages, empty directories and regression cases. Refuse destination collisions, unsafe archive paths and unfinished writer transactions.
 - Add round-trip recovery tests for retrieval and supersession undo, plus corruption and failure-cleanup checks. See [backup scope and recovery instructions](docs/BACKUPS.md).
 
@@ -47,7 +48,7 @@
 - Pin CI actions to official immutable commits, disable persisted checkout credentials and show failed test output.
 - Add regression coverage for read-only review, imports, signature drift/reuse, checkpoint mismatch, stemming fallback and correction guidance. Preserve recovery and end-to-end discrimination tests.
 
-**Compatibility:** default `query` JSON uses the hybrid schema; put `--keyword` first for the previous schema. Make approval commands require a TTY unless `APPROVAL=--non-interactive` is explicit. Existing notes, config and case files are not migrated automatically. Version remains 0.2.1 until a maintainer publishes a release.
+**Compatibility:** default `query` JSON uses the hybrid schema; put `--keyword` first for the previous schema. Make approval commands require a TTY unless `APPROVAL=--non-interactive` is explicit. Existing notes, config and case files are not migrated automatically. Released as 0.3.0.
 
 
 Hardening PR1: recovery.

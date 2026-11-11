@@ -1,6 +1,6 @@
 # Feedback upgrade: migration and operating notes
 
-Status: Unreleased. Builds on 0.2.1 and the recovery, evaluation and provenance hardening already on main. No hosted service, model API, embedding dependency or scheduled job is introduced.
+Status: Released in 0.3.0 (2026-11-11). Builds on 0.2.1 and the recovery, evaluation and provenance hardening already on main. No hosted service, model API, embedding dependency or scheduled job is introduced.
 
 ## What changes
 

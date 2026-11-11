@@ -101,6 +101,9 @@ def create(root, output):
         fail("choose an archive location outside the backed-up directories")
     if os.path.lexists(output):
         fail("archive destination exists")
+    if output.resolve().parent.is_relative_to(root):
+        print("warning: archive is inside the package checkout; it is unencrypted, never commit it "
+              "(*.kbbackup.zip is gitignored)", file=sys.stderr)
     entries = inventory(root)
     if len(entries) > MAX_ENTRIES or sum(n or 0 for n in entries.values()) > MAX_BYTES:
         fail("instance exceeds backup size limits")

@@ -7,7 +7,7 @@ The backup commands package the local instance data in `KB/`, `evals/`, and `age
     bin/kb backup verify /private/path/brain.zip
     bin/kb backup restore /private/path/brain.zip /private/path/recovered
 
-**Create** builds a private ZIP beside the requested output, verifies it, and rechecks source file hashes and inventory before publishing. Choose a new filename outside the archived directories. Pause external editors and agents while creating a backup. The command rejects an active write lock, pending transaction journal, symlink or special file. Independent file reads do not provide filesystem snapshot isolation.
+**Create** builds a private ZIP beside the requested output, verifies it, and rechecks source file hashes and inventory before publishing. Choose a new filename outside the archived directories, ideally outside this checkout entirely. Archives written inside it get a warning; `*.zip` is gitignored so a backup is never committed to a public fork. Pause external editors and agents while creating a backup. The command rejects an active write lock, pending transaction journal, symlink or special file. Independent file reads do not provide filesystem snapshot isolation.
 
 **Inspect** lists paths, sizes, and manifest hashes without reading the payload. **Verify** streams every file and compares its SHA-256 with the manifest. A corrupt or incomplete archive exits nonzero. The archive is unencrypted and the manifest is unsigned. Keep it in private storage and use a separately trusted digest or authenticated storage when authenticity matters.
 

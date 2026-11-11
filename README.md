@@ -223,6 +223,6 @@ After the quickstart you have a working, checked knowledge base:
 
 ### Status
 
-Version 0.2.1; the [Unreleased upgrades](CHANGELOG.md#unreleased) are documented in [UPGRADING.md](docs/UPGRADING.md). The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
+Version 0.3.0; the [0.3.0 upgrades](CHANGELOG.md#030--2026-11-11) are documented in [UPGRADING.md](docs/UPGRADING.md). The lean build path (sessions 1–8: typed pages, lint, gated write-back, regression suite,
 correction compiler, end-to-end loop test) is complete. Further phases wait until three real corrections
 have landed (`docs/HANDOFF.md` §5). MIT licensed.
