@@ -122,6 +122,78 @@ class Upgrades(unittest.TestCase):
         self.assertIn("requires the regressions file", text)
         shutil.rmtree(overlay.parent)
 
+    def test_withdraw_reimport_reinstate_and_handoff(self):
+        workflow = kb_testkit.load("kb-workflow.py")
+        original = self.proposal()
+        def land(pid, *flags):
+            return self.cli(writer, ["land", pid, "--endorsed-by", "owner", *flags])
+        self.assertEqual(land(original)[0], 0)
+        body = "# Short fact\n\n## Core Claim\nThe preferred meeting day is %s.\n"
+        def replacement(day):
+            return mcp.call(self.root, "kb_propose", dict(agent="RESEARCHER", slug="change-day",
+                category="alpha", supersedes="wiki:short-fact", type="fact", body=body % day,
+                confidence="high", source_ref="raw:source-one.md"))["id"]
+        new, pending = replacement("Wednesday"), replacement("Thursday")
+        review = json.loads(self.cli(writer, ["list", "--diff"])[1])["fact_reviews"][0]
+        self.assertEqual({p["id"] for p in review["pending"]}, {new, pending})
+        self.assertTrue(review["pending"][0]["source_excerpts"])
+        self.assertEqual(review["last_decision"]["actor"], "owner")
+        self.assertEqual(land(new)[0], 0)
+        source = self.tmp / "incoming"
+        source.mkdir()
+        (source / "short-fact.md").write_text(body % "Tuesday")
+        rc, text = self.cli(workflow, ["adopt-folder", str(source), "--agent", "RESEARCHER",
+                            "--category", "alpha", "--confidence", "high", "--apply"])
+        self.assertEqual(rc, 0, text)
+        self.assertEqual(json.loads(text)["items"][0]["state"], "withdrawn")
+        old = replacement("Tuesday")
+        self.assertIn("--reinstate", land(old)[1])
+        before = kb_testkit.tree_digest(self.root / "KB")
+        rc, text = self.cli(workflow, ["brief", "--since", "0"])
+        self.assertEqual(rc, 0, text)
+        brief = json.loads(text)
+        self.assertIn("Wednesday", brief["current_facts"][0]["claim"])
+        self.assertIn("Tuesday", brief["withdrawn"][0]["claim"])
+        self.assertIn(old, {p["id"] for p in brief["pending"]})
+        self.assertEqual(kb_testkit.tree_digest(self.root / "KB"), before)
+        self.assertEqual(land(old, "--reinstate", "New owner decision")[0], 0)
+        self.assertEqual(writer.read_ledger(self.root)[-1]["reinstates"]["reason"], "New owner decision")
+        self.assertEqual(self.cli(writer, ["unland", old, "--endorsed-by", "owner", "--reason", "rollback"])[0], 0)
+        self.assertIn("--reinstate", land(old)[1])
+        self.assertEqual(self.cli(workflow, ["brief", "--since", "99999"])[0], 1)
+
+    def test_explicit_withdrawal_leaves_identical_unrelated_fact_eligible(self):
+        pid = self.proposal()
+        self.assertEqual(self.cli(writer, ["land", pid, "--endorsed-by", "owner"])[0], 0)
+        self.assertEqual(self.cli(writer, ["unland", pid, "--withdraw-fact", "--reason", "obsolete",
+                                          "--endorsed-by", "owner"])[0], 0)
+        self.assertIn("--reinstate", self.cli(writer, ["land", pid, "--endorsed-by", "owner"])[1])
+        other = mcp.call(self.root, "kb_propose", dict(agent="RESEARCHER", slug="other-meeting",
+            category="alpha", body="# Other\n\n## Core Claim\nThe preferred meeting day is Tuesday.\n",
+            type="fact", confidence="high", source_ref="owner:2026-01-01"))["id"]
+        self.assertEqual(self.cli(writer, ["land", other, "--endorsed-by", "owner"])[0], 0)
+
+    def test_action_pairs_are_blind_and_bound(self):
+        case = self.strict()
+        case["expected_action"] = "ask"
+        other = dict(case, id="r-9998", origin="rule:clear-question", expected_action="answer", q="When is Project Alpha due?")
+        third = dict(case, id="r-9999", origin="rule:missing-evidence", expected_action="abstain", q="What is the unrecorded date?")
+        self.reg.write_text("".join(json.dumps(c)+"\n" for c in (case, other, third)))
+        rc, _ = self.cli(correct, ["replay-all", "--fresh"])
+        self.assertEqual(rc, 2)
+        d = self.root / evalmod.REPLAY_ALL
+        overlay = Path(json.loads((d / "manifest.json").read_text())["overlay"])
+        self.assertNotIn("expected_action", (overlay / "evals/regressions.jsonl").read_text())
+        (d / "results").mkdir()
+        for c in (case, other, third):
+            (d / "results" / ("replay-%s.md" % c["id"])).write_text("Which project?")
+            (d / "results" / ("judge-%s.json" % c["id"])).write_text(json.dumps(
+                {"verdict": "pass", "observed_action": "ask", "evidence": "Which project?"}))
+        report = evalmod.regressions(self.root, self.reg)
+        self.assertEqual((report["answer_passed"], report["failed"]), (1, 2), report)
+        self.assertNotEqual(evalmod.case_hash(case), evalmod.case_hash(dict(case, expected_action="answer")))
+        shutil.rmtree(overlay.parent)
+
     def test_mcp_scope_validation_and_stdio(self):
         server = mcp.Server(self.root)
         self.assertIn("error", server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))

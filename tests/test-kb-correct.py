@@ -123,7 +123,7 @@ class Base(unittest.TestCase):
             self.assertEqual(self.cli("record", "C-0001", "replay", "--run", run, "--result",
                                       self.fx("Answer for %s.\n" % run, "md"))[0], 0)
             judge = self.packet("judge-" + run)
-            self.assertEqual(set(judge), kbc.PACKETS["judge"])
+            self.assertEqual(set(judge), {"step", "cid", "run", "points", "answer"})
             self.assertEqual(self.cli("record", "C-0001", "judge", "--run", run, "--result", self.fx(
                 {"points": [{"point": "tide pools shelter kelp", "met": v == "PASS", "quote": ""}],
                  "verdict": v.lower(), "evidence": "Answer for %s." % run}))[0], 0)
@@ -298,7 +298,7 @@ class TestLand(Base):
         (d / "results" / "replay-r-0004.md").write_text("An answer.\n", encoding="utf-8")
         self.assertEqual(self.cli("replay-all")[0], 2)  # now waits on the judge
         self.assertEqual(set(json.loads((d / "packets" / "judge-r-0004.json").read_text(encoding="utf-8"))),
-                         kbc.PACKETS["judge"])
+                         {"step", "cid", "run", "points", "answer"})
         (d / "results" / "judge-r-0004.json").write_text(json.dumps({"points": [], "verdict": "fail", "evidence": "An answer."}), encoding="utf-8")
         rc, out = self.cli("replay-all")
         self.assertEqual(rc, 1, out)

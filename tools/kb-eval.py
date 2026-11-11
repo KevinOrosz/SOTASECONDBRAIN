@@ -43,7 +43,7 @@ CASE_SCHEMA = {
     "pages": _L, "targets": _L, "ranker": _S, "k": _I, "failing_version": _S, "landed_version": _S,
     "ledger_seq": (int, type(None)),
 }
-CASE_OPTIONAL = {"retired_reason": _S, "retrieval_version": _S}
+CASE_OPTIONAL = {"retired_reason": _S, "retrieval_version": _S, "expected_action": _S}
 KINDS, STATUSES = ("answer", "retrieval", "artifact"), ("active", "dormant", "retired")
 GOLD_SOURCES = ("owner-verbatim", "rules", "evidence-scan")
 ID_RE = re.compile(r"^r-(\d{4,})$")
@@ -71,6 +71,8 @@ def corpus_seal(root: Path, skip=()) -> str:
 
 def case_hash(case: dict) -> str:
     keys = CASE_BIND_KEYS + (("retrieval_version",) if "retrieval_version" in case else ())
+    if "expected_action" in case:
+        keys += ("expected_action",)
     return _sha(json.dumps({k: case.get(k) for k in keys}, sort_keys=True, ensure_ascii=False))
 
 
@@ -103,10 +105,12 @@ def forbidden_hit(answer: str, forbidden) -> list:
     return [f for f in forbidden if f and f.lower() in low]
 
 
-def judge_pass(res, answer: str, forbidden=()) -> tuple:
+def judge_pass(res, answer: str, forbidden=(), expected_action=None) -> tuple:
     """(passed, reason). Only a schema-valid "pass" citing a span found verbatim in the answer passes."""
     if not isinstance(res, dict) or res.get("verdict") not in VERDICTS:
         return False, "malformed: verdict not one of %s" % "/".join(VERDICTS)
+    if expected_action and res.get("observed_action") != expected_action:
+        return False, "judge observed_action must match " + expected_action
     ev = res.get("evidence")
     if not isinstance(ev, str) or not ev.strip() or ev.strip() not in answer:
         return False, "malformed: evidence span missing or not in the answer"
@@ -139,7 +143,7 @@ def fresh_verdicts(root: Path, cases: list) -> dict:
             res = json.loads(jf.read_text(encoding="utf-8"))
         except ValueError:
             res = None
-        out[c["id"]] = judge_pass(res, answer, c["forbidden"])
+        out[c["id"]] = judge_pass(res, answer, c["forbidden"], c.get("expected_action"))
     return out
 
 
@@ -238,6 +242,8 @@ def validate_cases(cases):
                 bad.append("%s: I-3 gold_locked must precede retrieval_at" % cid)
             if not c["expected"] and not c["forbidden"]:
                 bad.append("%s: I-2 retrieval case with no expected and no forbidden" % cid)
+        if "expected_action" in c and (c["kind"] != "answer" or c["expected_action"] not in ("answer", "ask", "abstain")):
+            bad.append("%s: invalid expected_action for this case" % cid)
         if c["kind"] == "artifact":
             if not c["targets"]:
                 bad.append("%s: I-2 artifact case without targets" % cid)

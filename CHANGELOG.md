@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fact decisions and session handoffs
+
+- Track exact withdrawn claims per fact. Surface prior decisions on import and review, require a reason to reinstate, and bind that reason to signed approvals.
+- Compare competing proposals and contradictory gaps with the current claim, source excerpts, submitter and prior decision in the review diff.
+- Add optional answer/ask/abstain regression cases with blind replay and independent action classification.
+- Add read-only `bin/kb brief --since SEQ` with source-linked changes and outstanding decisions. See [usage and compatibility](docs/CORRECTION-FIRST.md#withdrawals-and-competing-claims).
+
 ### Correction-first upgrade (2026-11-09)
 
 - New corrections use the same hybrid ranker as the default query command, record its source version, and tell replay agents which method and k to use. Existing records and cases retain their legacy ranker; explicit `open --ranker kb-query` remains available. Hybrid regression evaluation refuses degraded retrieval.

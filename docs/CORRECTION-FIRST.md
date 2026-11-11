@@ -63,3 +63,29 @@ For answer quality, use the same frozen reader, prompt, context budget and blind
 ## Real correction pilot
 
 Start with three real mistakes, then evaluate ten consecutive attempts including failures and abandoned attempts. Keep private observations outside the public repo. For each attempt record: correction id, question, date, model/version, outcome, before/after answer, review minutes, total owner minutes, model cost, recurrence at a fixed follow-up date, and why any attempt stopped. Missing follow-up stays unknown, never zero recurrence. Compare owner time against manually editing a note. Publish only redacted observations with owner approval; never substitute fixture corrections for user outcomes.
+
+## Withdrawals and competing claims
+
+A fact's ID is its wiki path. Replacing its Core Claim records the prior and new text on the land ledger row. Matching uses the extracted Core Claim with whitespace collapsed. Case, wording and punctuation matter. Another fact may use identical wording independently.
+
+To explicitly withdraw a landed fact, use the existing undo operation with an owner reason:
+
+    bin/kb write unland ID --withdraw-fact --reason "Source retracted" --endorsed-by OWNER --confirm
+
+This restores the previous page or removes a newly created page. Plain unland reverses the land without creating a new withdrawal. Earlier ledger history stays accessible. Existing historical rows without fact metadata are not backfilled.
+
+Use `bin/kb write list --diff` to review competing fact proposals or an open contradictory gap targeting the same stem. The review shows the current claim, proposed claims, dates, submitters, source references, opening excerpts of available RAW files and the previous decision. Confidence is the submitter's assessment. The owner can reject proposals, land one replacement, or leave the disagreement open. A stale replacement must be proposed again against the current page.
+
+Reimport checks the filename stem within the selected category. For a renamed source, pass `--select FILE --fact-id STEM` to `adopt-folder`. A withdrawn match is reported and skipped even with `--apply`. To intentionally reinstate it, submit a fact proposal and land it with `--reinstate "reason"`. Include the same reason in a signed dry run. The ledger records the reason and earlier decision.
+
+## Answer, ask or abstain
+
+Use `correct open --expected-action ask` alongside the usual question, owner correction and points file. Other actions are `answer` and `abstain`. This selects answer replay even if the question retrieved the right page. Use a separate context for the judge. It supplies `observed_action` based on the actual reply plus the usual verdict and verbatim evidence span. The expected action stays out of replay packets and blind overlays. Existing cases keep their original judging contract.
+
+Pair an ambiguous question with a specific version that has an answer. Add an unanswerable case when evidence is missing. An agent that always asks will fail the other cases.
+
+## Session handoff
+
+    bin/kb brief --since 12
+
+The cursor excludes ledger row 12. Save the returned `through` value for the next session. Changes include correction lands and reversals. Current facts, withdrawn claims, pending proposals, competing decisions, failed cases and cases awaiting replay have distinct fields. The brief checks the wiki against its seal and ledger, refuses unfinished operations, and checks input stability across generation. This is a local consistency check. It does not verify real-world truth or authenticate claimed identities.
