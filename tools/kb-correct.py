@@ -584,8 +584,15 @@ def active_cases(root: Path) -> list:
     return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
-def overlay(root: Path, dest: Path, patch=None) -> Path:
+def overlay(root: Path, dest: Path, patch=None, postimages=None) -> Path:
     """Spec P3 §6 step 10: one rebuilt copy of the instance with no inbox and redacted origins."""
+    # Overlay RAW is a link to the live archive. Keep every configured file in the disposable tree.
+    for key in kb_config.PATH_KEYS:
+        if key == "agents_glob":
+            continue
+        rel = Path(kb_config.rel(root, key))
+        need(not rel.is_absolute() and ".." not in rel.parts and rel.parts[:2] != ("KB", "RAW"),
+             "unsafe overlay path for %s" % key)
     shutil.copytree(root / "KB" / "wiki", dest / "KB" / "wiki")
     src_tools = root / "tools" if (root / "tools").is_dir() else TOOLS
     shutil.copytree(src_tools, dest / "tools", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -611,6 +618,11 @@ def overlay(root: Path, dest: Path, patch=None) -> Path:
         p = dest / kb_config.rel(root, "regressions")
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("".join(json.dumps(c, ensure_ascii=False) + "\n" for c in red), encoding="utf-8")
+    for rel, text in (postimages or {}).items():
+        path = (dest / rel).resolve()
+        need(path.is_relative_to(dest.resolve()), "proposal postimage outside overlay")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
     if patch:
         (dest / patch[0]).write_text(patch[1], encoding="utf-8")
     (dest / "KB" / "output").mkdir(parents=True, exist_ok=True)
@@ -871,19 +883,15 @@ def cmd_replay_all(root: Path, a) -> dict:
         cases = [c for c in active_cases(root) if c.get("kind") == "answer" and c.get("status") in ("active", "dormant")]
         need(cases, "no answer cases (active or dormant) to replay")
         tmp = Path(tempfile.mkdtemp(prefix="kb-replay-all-"))
-        ov = overlay(root, tmp / "live")
+        postimages = None
         proposal = getattr(a, "proposal", None)
         if proposal:
             writer = _load("kb-write.py")
             writer.configure(root)
             with writer.locked(root):
                 preview = writer.land_one(root, proposal, True)
-            for rel, text in preview["postimages"].items():
-                (ov / rel).parent.mkdir(parents=True, exist_ok=True)
-                (ov / rel).write_text(text, encoding="utf-8")
-            # Rebuild derived files after applying every staged wiki page.
-            rebuilt = overlay(ov, tmp / "proposed")
-            ov = rebuilt
+            postimages = preview["postimages"]
+        ov = overlay(root, tmp / "live", postimages=postimages)
         d.mkdir(parents=True, exist_ok=True)
         man.write_text(json.dumps({"overlay": str(ov), "proposal": getattr(a, "proposal", None),
             "live_binding": {c["id"]: kbe.binding(root, c) for c in cases}, "runs": {c["id"]: {

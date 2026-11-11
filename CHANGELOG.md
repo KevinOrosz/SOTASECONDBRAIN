@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Evidence review
+
+- Compare two RAW revisions with byte fingerprints and line edits.
+- Trace a source through explicit page dependencies to registered regression cases.
+- Pin an exact quotation and locate it after revision, reporting missing and ambiguous matches.
+- Rehearse a proposal against a specific query using rebuilt base and candidate search indexes. Proposal replay shares the staged overlay builder. See [commands and limits](docs/EVIDENCE-REVIEW.md).
+
 ### Fact decisions and session handoffs
 
 - Track exact withdrawn claims per fact. Surface prior decisions on import and review, require a reason to reinstate, and bind that reason to signed approvals.
