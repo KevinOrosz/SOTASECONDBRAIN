@@ -87,6 +87,8 @@ It retrieves candidate pages using hybrid search with Porter stemming, so `compo
 
 When a source changes, use the [evidence review guide](docs/EVIDENCE-REVIEW.md) to compare revisions, find dependent pages, check quotations, and preview a proposed fix in search.
 
+To revisit an answer after its sources change, [capture its wiki citations and audit the saved receipt](docs/ANSWER-CITATIONS.md).
+
 ### Step 7 · Let agents suggest changes
 
 An agent (or a person) writes a proposal into the inbox. It never edits the wiki directly.

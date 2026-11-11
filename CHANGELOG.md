@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Answer citations
+
+- Add `bin/kb answers capture` and `check` for answer receipts bound to approved wiki passages and ledger history.
+- Add `audit` for collection coverage and `queue` for review grouped by affected page. See [commands and limits](docs/ANSWER-CITATIONS.md).
+
 ### Evidence review
 
 - Compare two RAW revisions with byte fingerprints and line edits.

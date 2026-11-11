@@ -55,6 +55,10 @@ def diff(root, old, new):
 
 def pin(root, name, first, last):
     text, digest = read_source(root, name)
+    return pin_lines(name, text, digest, first, last)
+
+
+def pin_lines(name, text, digest, first, last):
     lines = text.splitlines()
     if not 1 <= first <= last <= len(lines):
         raise ValueError("line range outside source")
@@ -65,6 +69,13 @@ def pin(root, name, first, last):
 
 
 def check(root, receipt, revision=None):
+    validate_pin(receipt)
+    name = revision or receipt["source"]
+    text, digest = read_source(root, name)
+    return locate(receipt, name, text, digest)
+
+
+def validate_pin(receipt):
     if not isinstance(receipt, dict) or receipt.get("schema") != 1:
         raise ValueError("unsupported pin schema")
     if not isinstance(receipt.get("source"), str) or not re.fullmatch("[0-9a-f]{64}", str(receipt.get("source_sha256", ""))):
@@ -75,8 +86,10 @@ def check(root, receipt, revision=None):
             or not any(x.strip() for x in quote) or type(first) != int or type(last) != int
             or first < 1 or last-first+1 != len(quote)):
         raise ValueError("malformed quote or range")
-    name = revision or receipt["source"]
-    text, digest = read_source(root, name)
+
+
+def locate(receipt, name, text, digest):
+    quote, first, last = receipt["lines"], receipt["first"], receipt["last"]
     lines = text.splitlines()
     if digest == receipt["source_sha256"]:
         if lines[first-1:last] != quote:
