@@ -186,7 +186,7 @@ KB/  evals/        your instance (created by bootstrap; ignored by git)
 ```
 
 Your instance (`KB/`, `evals/`) is listed in `.gitignore`, so updating the package never touches
-your notes. Undo of new lands uses saved preimages, not git. Back up the whole instance, including `KB/inbox/` and `evals/`. Want your notes versioned? Keep `KB/` in its own git repo, or remove it from `.gitignore`.
+your notes. Undo of new lands uses saved preimages, not git. Use the [backup and recovery commands](docs/BACKUPS.md) to preserve the instance, including `KB/inbox/` and `evals/`. Want your notes versioned? Keep `KB/` in its own git repo, or remove it from `.gitignore`.
 
 ### Settings
 

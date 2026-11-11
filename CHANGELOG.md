@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Instance backups
+
+- Add `bin/kb backup create|inspect|verify|restore` for local instance-data archives. Include undo preimages, empty directories and regression cases. Refuse destination collisions, unsafe archive paths and unfinished writer transactions.
+- Add round-trip recovery tests for retrieval and supersession undo, plus corruption and failure-cleanup checks. See [backup scope and recovery instructions](docs/BACKUPS.md).
+
 ### Answer citations
 
 - Add `bin/kb answers capture` and `check` for answer receipts bound to approved wiki passages and ledger history.
