@@ -15,6 +15,8 @@
 >
 > No agent tool? Follow the [User guide](#user-guide) below. It's the same steps by hand.
 
+**Pairs with [SOTACOMMAND](https://github.com/KevinOrosz/SOTACOMMAND).** This repository is the memory; SOTACOMMAND is the team: AI helpers with clear jobs, set up the same way, by typing `WIZARD`. Each works alone. Together, your helpers propose pages here and you approve them, so the team remembers for months, not days. [Connect them in three steps](https://github.com/KevinOrosz/SOTACOMMAND/blob/main/integrations/second-brain/README.md).
+
 **Start here.** This page is the user guide, for people and AI agents alike. Read it top to bottom once; everything else in the repo is reference.
 
 **In one sentence:** a knowledge base made of plain Markdown files, where anyone (including AI agents) can *suggest* changes, only one person (the **owner**) can *approve* them, tool-mediated changes are logged with undo history, and corrections become tests for the mistakes they cover.
@@ -198,7 +200,7 @@ your notes. Undo of new lands uses saved preimages, not git. Use the [backup and
 
 Any assistant that can run shell commands can propose pages with `bin/kb write put` and never touch
 `KB/wiki` directly. See `docs/AGENTS.md` for how to give an agent its role and rules, and
-`docs/ARCHITECTURE.md` for how the pieces connect.
+`docs/ARCHITECTURE.md` for how the pieces connect. For a ready-made team of agents that uses this brain as its long-term memory, see [SOTACOMMAND](https://github.com/KevinOrosz/SOTACOMMAND).
 
 ### What you have now
 
