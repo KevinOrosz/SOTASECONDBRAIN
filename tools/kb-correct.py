@@ -59,8 +59,10 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -158,7 +160,9 @@ def load_record(root: Path, cid: str) -> dict:
     p = cdir(root, cid) / "record.json"
     need(p.is_file(), "%s: no record (run open first)" % cid)
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        record = json.loads(p.read_text(encoding="utf-8"))
+        need(isinstance(record, dict) and record.get("cid") == cid, "correction record identity mismatch")
+        return record
     except ValueError as e:
         raise Fail(2, "%s: record.json unreadable: %s" % (cid, e))
 
@@ -185,14 +189,86 @@ def run_row(rec: dict, result: str, notes: str) -> str:
         max(1, rec["compile"].get("attempt", 0)), result, notes)
 
 
+def scratch_base() -> Path:
+    need(hasattr(os, "getuid"), "managed correction scratch requires macOS or Linux")
+    return Path(tempfile.gettempdir()).resolve() / ("sotasecondbrain-" + str(os.getuid()))
+
+
+def private_directory(path: Path) -> bool:
+    info = path.lstat()
+    return stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and info.st_mode & 0o077 == 0
+
+
+def scratch_identity(root: Path, work: Path, operation: str) -> list:
+    instance, folder = root.stat(), work.lstat()
+    return [str(root.resolve()), instance.st_dev, instance.st_ino, operation,
+            work.name, folder.st_dev, folder.st_ino]
+
+
+def owned_scratch(root: Path, operation: str, overlay_path, leaf: str):
+    """A saved pathname alone conveys no authority to read or delete a scratch tree."""
+    if not isinstance(overlay_path, str):
+        return None
+    path, base = Path(overlay_path), scratch_base()
+    work = path.parent
+    if path.name != leaf or work.parent != base or not work.name.startswith("overlay-"):
+        return None
+    try:
+        if not private_directory(base) or not private_directory(work) or path.is_symlink():
+            return None
+        marker = work / ".kb-owner"
+        info = marker.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 8192:
+            return None
+        if json.loads(marker.read_bytes()) != scratch_identity(root, work, operation):
+            return None
+    except (OSError, ValueError):
+        return None
+    return work
+
+
+@contextlib.contextmanager
+def new_scratch(root: Path, operation: str):
+    base = scratch_base()
+    base.mkdir(mode=0o700, exist_ok=True)
+    need(private_directory(base) and shutil.rmtree.avoids_symlink_attacks,
+         "scratch requires a private directory and symlink-safe removal")
+    work = Path(tempfile.mkdtemp(prefix="overlay-", dir=base))
+    original = work.lstat()
+    try:
+        with (work / ".kb-owner").open("x", encoding="utf-8") as marker:
+            json.dump(scratch_identity(root, work, operation), marker)
+        yield work
+    except BaseException:
+        # The directory was created by this call, never selected by persisted input.
+        if work.exists() and os.path.samestat(original, work.lstat()):
+            shutil.rmtree(work)
+        raise
+
+
+def release_scratch(root: Path, operation: str, overlay_path, leaf: str) -> None:
+    work = owned_scratch(root, operation, overlay_path, leaf)
+    if work is not None and shutil.rmtree.avoids_symlink_attacks:
+        try:
+            shutil.rmtree(work)
+        except FileNotFoundError:
+            if work.exists():
+                raise
+
+
+def release_validation(root: Path, rec: dict) -> None:
+    base = rec["validate"].pop("base_overlay", None)
+    patched = rec["validate"].pop("patched_overlay", None)
+    work = owned_scratch(root, rec["cid"], base, "base")
+    if work is not None and owned_scratch(root, rec["cid"], patched, "patched") == work:
+        release_scratch(root, rec["cid"], base, "base")
+
+
 def finish(root: Path, rec: dict, stage: str, result: str, notes: str) -> None:
     """Terminal transition: stage, run-log row (stored + printed), overlays removed."""
     rec["stage"], rec["await"] = stage, None
     rec["terminal_row"] = run_row(rec, result, notes)
-    for key in ("base_overlay", "patched_overlay"):
-        ov = rec["validate"].pop(key, None)
-        if ov:
-            shutil.rmtree(Path(ov).parent if Path(ov).name in ("base", "patched") else ov, ignore_errors=True)
+    release_validation(root, rec)
     save(root, rec)
     print("RUN-LOG  " + rec["terminal_row"], file=sys.stderr)
 
@@ -243,9 +319,14 @@ def packet_payload(root: Path, rec: dict, step: str, run: str = "") -> dict:
     if step == "replay":
         runs = rec["validate"].get("runs", {})
         need(run in runs, "%s: no replay run %r (have %s)" % (rec["cid"], run, sorted(runs)))
+        leaf = runs[run]["overlay"]
+        need(leaf in ("base", "patched"), "unknown correction overlay")
+        overlay_path = rec["validate"].get(leaf + "_overlay")
+        need(owned_scratch(root, rec["cid"], overlay_path, leaf) and Path(overlay_path).is_dir(),
+             "correction overlay unavailable; discard the old correction and start a new one")
         return {"q": runs[run]["q"], "ranker": runs[run].get("ranker", rec.get("ranker", "kb-query")),
                 "k": runs[run].get("k", rec.get("k", K)),
-                "overlay": rec["validate"][runs[run]["overlay"] + "_overlay"]}
+                "overlay": overlay_path}
     if step == "judge":
         runs = rec["validate"].get("runs", {})
         need(run in runs, "%s: no replay run %r" % (rec["cid"], run))
@@ -674,10 +755,7 @@ def stale_keys(root: Path, rec: dict) -> list:
 
 
 def reset_validate(root: Path, rec: dict) -> None:
-    for key in ("base_overlay", "patched_overlay"):
-        ov = rec["validate"].get(key)
-        if ov:
-            shutil.rmtree(Path(ov).parent, ignore_errors=True)
+    release_validation(root, rec)
     rec["stage"], rec["await"], rec["validate"], rec["terminal_row"] = "reviewed", "validate", {}, ""
 
 
@@ -699,8 +777,8 @@ def cmd_validate(root: Path, a) -> dict:
     need(not bad, "draft case invalid: %s" % "; ".join(bad))
     v = rec["validate"]
     if not v.get("base_overlay"):
-        tmp = Path(tempfile.mkdtemp(prefix="kb-correct-%s-" % rec["cid"]))
-        base, patched = overlay(root, tmp / "base"), overlay(root, tmp / "patched", (rel, after))
+        with new_scratch(root, rec["cid"]) as tmp:
+            base, patched = overlay(root, tmp / "base"), overlay(root, tmp / "patched", (rel, after))
         v.update(base_overlay=str(base), patched_overlay=str(patched), det_rc=det_check(root, patched),
                  affected=[], case=case)
         v["binding"] = bind_now(root, rec)
@@ -874,15 +952,40 @@ def cmd_landed(root: Path, a) -> dict:
 
 # ---------- replay-all ----------
 
+def publish_replay_manifest(path: Path, data: dict) -> None:
+    """Publish complete bytes atomically, and never overwrite a concurrent entry."""
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent) as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=1)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+        try:
+            os.link(stream.name, path)
+        except FileExistsError as exc:
+            raise Fail(2, "replay manifest already exists; retry") from exc
+
+
 def cmd_replay_all(root: Path, a) -> dict:
+    root = root.resolve()
     d = root / CORR / "_replay-all"
-    if a.fresh:
-        shutil.rmtree(d, ignore_errors=True)
+    need(d.resolve() == d, "replay state must stay inside the instance without symlinks")
     man = d / "manifest.json"
-    if not man.is_file():
+    if a.fresh and d.exists():
+        need(shutil.rmtree.avoids_symlink_attacks, "replay reset requires symlink-safe removal")
+        try:
+            old = kbe.read_replay_manifest(root)
+        except (OSError, ValueError):
+            old = None
+        if old is not None:
+            release_scratch(root, "replay-all", old.get("overlay"), "live")
+        shutil.rmtree(d)
+    try:
+        m = kbe.read_replay_manifest(root)
+    except (OSError, ValueError) as exc:
+        raise Fail(2, "%s; retry or use --fresh" % exc) from exc
+    if m is None:
         cases = [c for c in active_cases(root) if c.get("kind") == "answer" and c.get("status") in ("active", "dormant")]
         need(cases, "no answer cases (active or dormant) to replay")
-        tmp = Path(tempfile.mkdtemp(prefix="kb-replay-all-"))
         postimages = None
         proposal = getattr(a, "proposal", None)
         if proposal:
@@ -891,19 +994,20 @@ def cmd_replay_all(root: Path, a) -> dict:
             with writer.locked(root):
                 preview = writer.land_one(root, proposal, True)
             postimages = preview["postimages"]
-        ov = overlay(root, tmp / "live", postimages=postimages)
-        d.mkdir(parents=True, exist_ok=True)
-        man.write_text(json.dumps({"overlay": str(ov), "proposal": getattr(a, "proposal", None),
-            "live_binding": {c["id"]: kbe.binding(root, c) for c in cases}, "runs": {c["id"]: {
-            "q": c["q"], "points": c["expected"], "forbidden": c["forbidden"], "status": c["status"], "expected_action": c.get("expected_action"),
-            "ranker": c["ranker"], "k": c["k"],
-            "binding": kbe.binding(ov, c)} for c in cases}},
-            ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    m = json.loads(man.read_text(encoding="utf-8"))
+        with new_scratch(root, "replay-all") as tmp:
+            ov = overlay(root, tmp / "live", postimages=postimages)
+            d.mkdir(parents=True, exist_ok=True)
+            m = {"overlay": str(ov), "proposal": getattr(a, "proposal", None),
+                 "live_binding": {c["id"]: kbe.binding(root, c) for c in cases}, "runs": {c["id"]: {
+                 "q": c["q"], "points": c["expected"], "forbidden": c["forbidden"], "status": c["status"],
+                 "expected_action": c.get("expected_action"), "ranker": c["ranker"], "k": c["k"],
+                 "binding": kbe.binding(ov, c)} for c in cases}}
+            publish_replay_manifest(man, m)
     need(m.get("proposal") == getattr(a, "proposal", None), "replay target changed; use --fresh")
     now = {c["id"]: c for c in active_cases(root)}
-    ov = Path(m["overlay"])
-    if ov.exists():
+    work = owned_scratch(root, "replay-all", m.get("overlay"), "live")
+    if work is not None:
+        ov = work / "live"
         need(not any(kbe.stale(run.get("binding"), kbe.binding(ov, now[cid])) for cid, run in m["runs"].items() if cid in now),
              "replay overlay changed; rerun with --fresh")
     moved = sorted(cid for cid, run in m["runs"].items()
@@ -920,6 +1024,7 @@ def cmd_replay_all(root: Path, a) -> dict:
             ok = kbe.judge_pass(res, ans.read_text(encoding="utf-8"), run["forbidden"], run.get("expected_action"))[0]
             (passed if ok else failed).append(cid)
             continue
+        need(work is not None and (work / "live").is_dir(), "replay overlay unavailable; rerun with --fresh")
         pk = {"step": "replay", "cid": "replay-all", "run": cid, "q": run["q"], "overlay": m["overlay"], "ranker": run.get("ranker", "kb-query"), "k": run.get("k", K)} if not ans.is_file() \
             else {"step": "judge", "cid": "replay-all", "run": cid, "points": run["points"],
                   "answer": ans.read_text(encoding="utf-8"), **action_prompt(run)}
@@ -933,7 +1038,7 @@ def cmd_replay_all(root: Path, a) -> dict:
     if pending:
         raise Fail(2, "replay-all waiting on %d result(s): %s" % (len(pending), ", ".join(pending)))
     if not failed:
-        shutil.rmtree(Path(m["overlay"]).parent, ignore_errors=True)
+        release_scratch(root, "replay-all", m.get("overlay"), "live")
     need(not failed, "replay-all: %d of %d case(s) failed: %s" % (len(failed), len(m["runs"]), ", ".join(sorted(failed))), 1)
     return out
 

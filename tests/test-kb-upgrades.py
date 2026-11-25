@@ -194,6 +194,65 @@ class Upgrades(unittest.TestCase):
         self.assertNotEqual(evalmod.case_hash(case), evalmod.case_hash(dict(case, expected_action="answer")))
         shutil.rmtree(overlay.parent)
 
+    def test_approved_search_and_read_ignore_cache_and_unreviewed_text(self):
+        path = "KB/wiki/alpha/first.md"
+        self.assertEqual(mcp.call(self.root, "kb_read", {"path": path})["content"],
+                         (self.root / path).read_text())
+        sentinel = self.tmp / "outside.md"
+        sentinel.write_text("Private fixture title")
+        cache = self.root / "KB/output/kb-graph.json"
+        graph = json.loads(cache.read_text())
+        graph["nodes"]["article"][0].update(title="Private fixture title", path=str(sentinel))
+        cache.write_text(json.dumps(graph))
+        idx = self.root / "KB/output/kb-index.json"
+        idx.write_text("cache deliberately unavailable")
+        trusted = mcp.call(self.root, "kb_search", {"query": "zebrafish"})
+        self.assertEqual(trusted["results"][0]["path"], path)
+        self.assertNotIn("Private fixture title", json.dumps(trusted))
+        alias = self.tmp / "root-alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        search = kb_testkit.load("kb-graph-query.py")
+        self.assertEqual(search.verb_search(alias, None, "zebrafish", 3)["results"][0]["path"], path)
+        (self.root / path).write_text("# Unreviewed amber fixture")
+        with self.assertRaisesRegex(ValueError, "approval hash"):
+            mcp.call(self.root, "kb_read", {"path": path})
+        self.assertEqual(mcp.call(self.root, "kb_search", {"query": "amber"})["results"], [])
+        (self.root / writer.SEAL).unlink()
+        with self.assertRaisesRegex(ValueError, "seal"):
+            mcp.call(self.root, "kb_search", {"query": "amber"})
+
+    def test_dashboard_renders_metadata_as_text(self):
+        index = kb_testkit.load("kb-index.py")
+        row = index.parse_article(self.root / "KB/wiki/alpha/first.md", self.root)
+        row["category"] = 'A & B <notes> "quoted"'
+        row["updated"] = "<unreviewed>"
+        page = index.dashboard_html({"articles": [row], "categories": [row["category"]], "article_count": 1,
+                                     "inputs_hash": "a" * 64, "generated": "2026-11-24"})
+        self.assertNotIn("<notes>", page)
+        self.assertNotIn("<unreviewed>", page)
+        self.assertNotIn("innerHTML", page)
+        self.assertIn("node.textContent=value", page)
+        self.assertIn("chip.dataset.c=category", page)
+
+    def test_make_passes_reason_as_one_literal_value(self):
+        reason = 'Owner checked "Meeting notes" and $(LABEL) with $5'
+        values = {"ID": "AGENT/2026-11-24-meeting", "OWNER": "owner", "REASON": reason}
+        args = writer.make_approval_args("unland", values, self.root)
+        self.assertIn("--reason=" + reason, args)
+        self.assertIn("--confirm", args)
+        wrapper = self.tmp / "make-fixture"
+        (wrapper / "tools").mkdir(parents=True)
+        shutil.copy2(mcp.TOOLS.parent / "Makefile", wrapper / "Makefile")
+        (wrapper / "tools/kb-write.py").write_text(
+            'import json, os, sys\nprint(json.dumps([sys.argv[1:], os.environ["REASON"]]))\n')
+        result = subprocess.run(["make", "-s", "unland", "ID=" + values["ID"], "REASON=" + reason,
+                                 "LABEL=expanded"], cwd=wrapper, text=True, capture_output=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [["--make-approval", "unland"], reason])
+        with self.assertRaises(ValueError):
+            writer.make_approval_args("land", dict(values, APPROVAL="invalid mode"), self.root)
+        with self.assertRaises(ValueError):
+            writer.make_approval_args("land", dict(values, ID="bad id"), self.root)
+
     def test_mcp_scope_validation_and_stdio(self):
         server = mcp.Server(self.root)
         self.assertIn("error", server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))

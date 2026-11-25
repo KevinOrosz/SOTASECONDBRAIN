@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import re
 import shutil
 import sys
@@ -373,6 +374,113 @@ class TestLand(Base):
 
 
 class TestCorrect(Base):
+    def test_replay_manifest_requires_one_regular_file_and_exclusive_creation(self):
+        state = self.root / kbc.CORR / "_replay-all"
+        state.mkdir(parents=True)
+        manifest = state / "manifest.json"
+        note = self.tmp / "note.txt"
+        note.write_text("keep")
+        for target in (note, self.tmp / "missing"):
+            manifest.symlink_to(target)
+            with self.assertRaisesRegex(ValueError, "without links"):
+                kbe.read_replay_manifest(self.root)
+            rc, result = self.cli("replay-all")
+            self.assertEqual(rc, 2)
+            self.assertIn("without links", result["error"])
+            with self.assertRaisesRegex(kbc.Fail, "already exists"):
+                kbc.publish_replay_manifest(manifest, {"runs": {}})
+            manifest.unlink()
+        self.assertFalse((self.tmp / "missing").exists())
+        os.link(note, manifest)
+        self.assertEqual(self.cli("replay-all")[0], 2)
+        manifest.unlink()
+        manifest.mkdir()
+        self.assertIn("regular file", self.cli("replay-all")[1]["error"])
+        manifest.rmdir()
+        manifest.write_text("original")
+        with self.assertRaisesRegex(kbc.Fail, "already exists"):
+            kbc.publish_replay_manifest(manifest, {"runs": {}})
+        self.assertEqual(manifest.read_text(), "original")
+        self.assertEqual(note.read_text(), "keep")
+
+    def test_cleanup_leaves_unmanaged_and_imported_directories_alone(self):
+        self.assertEqual(self.open_raw()[0], 0)
+        with mock.patch.object(kbc, "scratch_base", return_value=self.tmp / "private-scratch"):
+            with kbc.new_scratch(self.root, "C-0001") as owned:
+                (owned / "base").mkdir()
+                (owned / "patched").mkdir()
+            elsewhere = self.tmp / "separate-instance"
+            elsewhere.mkdir()
+            kbc.release_scratch(elsewhere, "C-0001", str(owned / "base"), "base")
+            kbc.release_scratch(self.root, "replay-all", str(owned / "base"), "base")
+            self.assertTrue(owned.is_dir())
+
+            legacy = self.tmp / "legacy-work"
+            legacy.mkdir()
+            marker = legacy / "keep.txt"
+            marker.write_text("keep")
+            rec = self.rec()
+            rec["validate"].update(base_overlay=str(legacy / "base"), patched_overlay=str(legacy / "patched"))
+            kbc.reset_validate(self.root, rec)
+            self.assertEqual(marker.read_text(), "keep")
+            rec["validate"].update(base_overlay=str(legacy), patched_overlay=str(owned / "patched"))
+            kbc.finish(self.root, rec, "killed", "KILL", "fixture complete")
+            self.assertTrue(owned.is_dir())
+            self.assertEqual(marker.read_text(), "keep")
+            kbc.release_scratch(self.root, "C-0001", str(owned / "base"), "base")
+            self.assertFalse(owned.exists())
+
+    def test_cleanup_refuses_replaced_directories_and_symlinks(self):
+        with mock.patch.object(kbc, "scratch_base", return_value=self.tmp / "private-scratch"):
+            with kbc.new_scratch(self.root, "C-0001") as owned:
+                (owned / "base").mkdir()
+            original = owned.with_name("original")
+            owned.rename(original)
+            owned.symlink_to(original, target_is_directory=True)
+            kbc.release_scratch(self.root, "C-0001", str(owned / "base"), "base")
+            self.assertTrue(owned.is_symlink())
+            owned.unlink()
+            shutil.copytree(original, owned)
+            kbc.release_scratch(self.root, "C-0001", str(owned / "base"), "base")
+            self.assertTrue((owned / "base").is_dir())
+            shutil.rmtree(owned)
+            original.rename(owned)
+            (owned / "base").rmdir()
+            (owned / "base").symlink_to(self.root, target_is_directory=True)
+            kbc.release_scratch(self.root, "C-0001", str(owned / "base"), "base")
+            self.assertTrue((owned / "base").is_symlink())
+
+    def test_replay_restart_preserves_unmanaged_tree_and_cleans_owned_tree(self):
+        with mock.patch.object(kbc, "scratch_base", return_value=self.tmp / "private-scratch"):
+            self.assertEqual(self.cli("replay-all")[0], 2)
+            d = self.root / kbc.CORR / "_replay-all"
+            man = d / "manifest.json"
+            before = json.loads(man.read_text())
+            old = Path(before["overlay"]).parent
+            self.assertTrue(old.is_dir())
+            self.assertEqual(self.cli("replay-all", "--fresh")[0], 2)
+            self.assertFalse(old.exists())
+            elsewhere = self.tmp / "keep"
+            elsewhere.mkdir()
+            marker = elsewhere / "note.txt"
+            marker.write_text("keep")
+            data = json.loads(man.read_text())
+            data["overlay"] = str(elsewhere / "live")
+            man.write_text(json.dumps(data))
+            rc, result = self.cli("replay-all")
+            self.assertEqual(rc, 2)
+            self.assertIn("--fresh", result["error"])
+            self.assertEqual(self.cli("replay-all", "--fresh")[0], 2)
+            self.assertEqual(marker.read_text(), "keep")
+
+            local_state = self.tmp / "saved-replay-state"
+            d.rename(local_state)
+            d.symlink_to(local_state, target_is_directory=True)
+            rc, result = self.cli("replay-all", "--fresh")
+            self.assertEqual(rc, 2)
+            self.assertIn("without symlinks", result["error"])
+            self.assertTrue((local_state / "manifest.json").is_file())
+
     def test_01_gold_locked_before_retrieval(self):
         rc, out = self.open_raw()
         self.assertEqual(rc, 0, out)

@@ -18,3 +18,5 @@ Use trusted archives. For a quick check with a compatible package checkout:
     python3 tools/kb-graph-query.py search "your question" --root /private/path/recovered --json
 
 Keep the matching package revision separately. Also back up any custom souls, program files, config targets or answer receipts outside the three directories. Git history for legacy undo and signing keys are separate. In-progress external replay work can reference absolute paths to temporary overlays. Finish or discard that work before migration and start a fresh replay after moving machines. A byte-valid archive can preserve an unhealthy brain; run instance verification as well as archive verification.
+
+Correction scratch directories belong to the instance and operating-system user that created them. After a restore or upgrade from an older version, restart an unfinished replay with `bin/kb correct replay-all --fresh`. For a pending correction that requests an unavailable overlay, discard that correction and open a new one. Old or unverifiable temporary directories are left for their owner to inspect.

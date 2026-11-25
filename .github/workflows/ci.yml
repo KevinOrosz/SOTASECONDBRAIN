@@ -16,13 +16,18 @@ concurrency:
 jobs:
   test:
     name: ${{ matrix.os }} · Python ${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.9", "3.12"]
+        include:
+          # Ubuntu 24.04 is the last published Actions build for legacy CPython 3.9.
+          - os: ubuntu-latest
+            python: "3.9"
+            runner: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:

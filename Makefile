@@ -29,11 +29,12 @@ sandbox:
 
 status:
 	bin/kb status
-APPROVAL ?= --confirm
-OWNER ?= $(shell python3 -c 'import sys; sys.path.insert(0, "tools"); import kb_config; print(kb_config.load(".")["owner"])')
-land:
-	@test -n "$(ID)" || (echo "usage: make land ID=AGENT/YYYY-MM-DD-slug" && exit 1)
-	bin/kb write land $(ID) --endorsed-by $(OWNER) $(APPROVAL)
-unland:
-	@test -n "$(ID)" -a -n "$(REASON)" || (echo "usage: make unland ID=... REASON='why'" && exit 1)
-	bin/kb write unland $(ID) --reason "$(REASON)" --endorsed-by $(OWNER) $(APPROVAL)
+# Preserve command-line values verbatim. Recipes never expand approval data into shell source.
+override MAKEOVERRIDES :=
+override ID := $(value ID)
+override REASON := $(value REASON)
+override OWNER := $(value OWNER)
+override APPROVAL := $(value APPROVAL)
+export ID REASON OWNER APPROVAL
+land unland:
+	@python3 tools/kb-write.py --make-approval $@

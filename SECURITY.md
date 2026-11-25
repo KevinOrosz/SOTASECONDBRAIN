@@ -2,13 +2,13 @@
 
 ## Reporting a problem
 
-Please report security issues privately through GitHub's private vulnerability reporting: open the **Security** tab and choose **Report a vulnerability**. Do not open a public issue. Include steps to reproduce and the output of `make verify`. You'll get an acknowledgement within 7 days.
+Please report security issues privately through GitHub's private vulnerability reporting: open the **Security** tab and choose **Report a vulnerability**. Do not open a public issue. Include steps to reproduce and the failing check name plus a redacted RESULT line from `make verify`. Remove private article titles, source paths, queries and credentials. You'll get an acknowledgement within 7 days.
 
 ## What this project does and doesn't do
 
 - **No network.** The tools make no network calls and import no network libraries. CI and the test suites check this.
 - **No model calls, no keys.** The tools never call an AI model and need no API keys or tokens.
-- **Your data stays local.** Your knowledge base (`KB/`, `evals/`, `agents/`) is in `.gitignore`, so it is never committed to this repo.
+- **Your data stays local.** Your knowledge base (`KB/`, `evals/`, `agents/`) is in `.gitignore`, so Git excludes it by default. A hosted MCP client can send retrieved text to its model provider. Choose a client approved for the sensitivity of your wiki.
 - **Tamper evidence.** Every approved change is hashed into an append-only ledger (`KB/inbox/_ledger.jsonl`). `make verify` flags any wiki file whose bytes don't match the ledger. It detects changes; it can't prove who made them. Raw sources are hashed when a page lands, and `make verify` fails if one goes missing or changes. See `docs/TRUST.md` for the full trust boundaries and the threat model for inbox inputs.
 
 ## Agents

@@ -42,7 +42,7 @@ Start `python3 /absolute/path/to/SOTASECONDBRAIN/tools/kb-mcp.py --root /absolut
 {"mcpServers":{"second-brain":{"command":"python3","args":["/absolute/path/to/SOTASECONDBRAIN/tools/kb-mcp.py","--root","/absolute/path/to/instance"]}}}
 ```
 
-Five tools: `kb_search`, `kb_read`, `kb_status`, `kb_correction_next`, `kb_propose`. Proposals require an explicitly registered agent, category, source reference and confidence. Reads resolve within `KB/wiki`; symlink escapes are rejected. Page content is untrusted data, never an instruction source. Owner land/unland, arbitrary commands and remote transports are not exposed. The adapter implements the [MCP stdio transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), initialization and tools subset. Tested with protocol fixtures; individual client integrations still require a smoke test.
+Five tools: `kb_search`, `kb_read`, `kb_status`, `kb_correction_next`, `kb_propose`. Proposals require an explicitly registered agent, category, source reference and confidence. MCP reads and searches require a sealed instance. They return approved article bytes and omit drifted search results. Symlinked article paths are rejected. Page content is untrusted data, never an instruction source. Owner land/unland, arbitrary commands and remote transports are not exposed. The adapter implements the [MCP stdio transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), initialization and tools subset. Tested with protocol fixtures; individual client integrations still require a smoke test.
 
 ## Matched retrieval benchmark
 

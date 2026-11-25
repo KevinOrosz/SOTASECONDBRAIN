@@ -1,7 +1,7 @@
 # SOTASECONDBRAIN
 
 [![CI](https://github.com/KevinOrosz/SOTASECONDBRAIN/actions/workflows/ci.yml/badge.svg)](https://github.com/KevinOrosz/SOTASECONDBRAIN/actions/workflows/ci.yml)
-![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![Recommended Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)
 ![No network, no API keys](https://img.shields.io/badge/network-none-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -33,7 +33,7 @@ No accounts, no servers, no API keys, no AI calls inside the tools. Works with a
 
 ### Step 0 · What you need
 
-A Mac or Linux computer with **Python 3.9+**, **git** and **make** (most Macs already have all three). Check:
+For new installations, use macOS or Linux with a currently supported **Python 3.11 or newer**, Git and Make. Python 3.9 and 3.10 remain compatible for existing installations and no longer receive upstream security fixes. See [Python release status](https://devguide.python.org/versions/). Check your tools:
 
 ```bash
 python3 --version && git --version && make --version | head -1

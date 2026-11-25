@@ -11,6 +11,17 @@ make test && make verify
 
 Or open the repo in any AI agent tool and type `WIZARD`.
 
+### Public Git identities
+
+Choose the exact noreply address shown under GitHub Settings → Emails for this checkout. Enable the pre-push check before your first push:
+
+```sh
+git config --local user.email 'YOUR_GITHUB_NOREPLY_ADDRESS'
+git config --local core.hooksPath .githooks
+```
+
+The hook checks the authors and committers across the outgoing history and the taggers on annotated tags. It reports object IDs and roles without printing addresses. The public history through the first audited snapshot is grandfathered. GitHub Actions repeats the check on pushes and pull requests. Select your noreply address when merging or tagging through GitHub. For a clone with unrelated custom hooks, integrate the checker with the existing pre-push hook.
+
 ## Ground rules
 
 1. **Standard library only.** `tools/` uses Python 3.9+ and nothing from pip. No model calls and no network calls inside the tools: model work happens in the agent, tools only check and record.

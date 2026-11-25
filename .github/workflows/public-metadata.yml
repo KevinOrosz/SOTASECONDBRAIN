@@ -1,0 +1,15 @@
+name: Public Git metadata
+on: [pull_request, push]
+permissions:
+  contents: read
+jobs:
+  metadata:
+    name: public-git-metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python3 scripts/check-git-privacy.py --event "$GITHUB_EVENT_PATH"

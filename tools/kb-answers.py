@@ -22,7 +22,12 @@ def fingerprint(value):
 
 class Wiki:
     def __init__(self, root):
+        root = root.resolve()
         self.root = root
+        for rel in (writer.LEDGER, writer.SEAL, writer.OPS):
+            path = root / rel
+            if path.resolve() != path:
+                raise ValueError("approval state must use canonical instance paths")
         self.rows = writer.read_ledger(root)
         self.seal = writer.load_seal(root)
         self.expected = writer.expected_hashes(root, self.rows)

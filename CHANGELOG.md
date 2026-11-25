@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Restrict correction and replay cleanup to directories created for the current local instance. Start a fresh replay when migrating from an older installation.
+- Verify approval hashes for MCP reads and search. Derive hybrid search results from canonical article bytes and render dashboard metadata as text.
+- Pass approval arguments separately from shell code. Public bug reports ask for redacted results. Recommend a maintained Python for new installations.
+- Add an opt-in pre-push email privacy check and a GitHub Actions check for outgoing commits and annotated tags.
+
 ## 0.3.0 — 2026-11-11
 
 ### Instance backups

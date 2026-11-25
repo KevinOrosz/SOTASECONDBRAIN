@@ -78,3 +78,6 @@ Signed land receipts retain the signed payload and signature in the ledger. Veri
 ## Correction-first amendment (2026-11-09)
 
 See [CORRECTION-FIRST.md](CORRECTION-FIRST.md) for the current policy, facts, MCP adapter and evaluation contract. `require-fresh` blocks unchecked active answer cases against the entire resulting corpus; it does not claim an affected-page dependency analysis. Legacy instances default to warnings. External agents supply replay and judge results; bindings detect drift, not dishonest judgments. New correction records use hybrid retrieval; existing records/cases preserve their stored method. Short facts reuse article proposals and hash-checked supersession. MCP omits owner operations, but does not isolate an agent that already has filesystem access. No real-user effectiveness or GBrain superiority result has been established.
+
+
+MCP article reads require the current seal and ledger to approve the exact page bytes. Hybrid search derives titles, snippets, links and ranking inputs from canonical wiki files. An MCP search requires a seal and omits drifted pages. The CLI also checks approvals for a sealed instance. Unsealed local evaluation overlays remain searchable for correction tests. The model host receives the retrieved text through its MCP client; choose the client and account according to the sensitivity of the wiki.

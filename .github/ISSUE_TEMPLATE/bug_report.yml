@@ -6,14 +6,14 @@ body:
     id: what
     attributes:
       label: What happened?
-      description: What you ran, what you expected, what you got.
+      description: Use the demo or a synthetic page to describe what you ran and what you expected.
     validations:
       required: true
   - type: textarea
     id: output
     attributes:
-      label: Output of `make verify`
-      description: Paste the full output. It names the failing check.
+      label: Failing check and redacted result
+      description: Share the check name and RESULT line only. Remove personal paths, source names, queries, addresses and credentials. Report sensitive details privately via SECURITY.md.
       render: text
   - type: input
     id: env

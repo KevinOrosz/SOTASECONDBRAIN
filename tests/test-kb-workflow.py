@@ -65,12 +65,14 @@ class Workflow(unittest.TestCase):
 
     def test_checkpoint_comparison_and_ledger_tamper(self):
         wf.checkpoint(self.root)
-        self.assertEqual(wf.status(self.root)['retrieval']['delta'], 0)
+        report = wf.status(self.root)
+        self.assertEqual(report['retrieval']['delta'], 0)
+        self.assertIs(report['checkpoint_matches_ledger'], True)
         self.proposal()
         wf.checkpoint(self.root)
         ledger = self.root / kw.LEDGER
         ledger.write_text(ledger.read_text().replace('RESEARCHER', 'OTHER'))
-        self.assertFalse(wf.status(self.root)['checkpoint_matches_ledger'])
+        self.assertIs(wf.status(self.root)['checkpoint_matches_ledger'], False)
 
     def test_checkpoint_refuses_changed_inputs(self):
         stamp = wf.state_hash(self.root)
@@ -203,8 +205,11 @@ class Workflow(unittest.TestCase):
 
     def test_next_replay_judge_sequence_keeps_blind_packet(self):
         folder = self.root / kc.CORR / 'C-0001'; folder.mkdir(parents=True)
+        with kc.new_scratch(self.root, 'C-0001') as work:
+            (work / 'base').mkdir()
+        self.addCleanup(kc.release_scratch, self.root, 'C-0001', str(work / 'base'), 'base')
         rec = {'cid':'C-0001','stage':'reviewed','await':'replay', 'validate': {
-            'base_overlay': str(self.root), 'runs': {'base': {'q':'question', 'overlay':'base', 'points':['SECRET GOLD']}}}}
+            'base_overlay': str(work / 'base'), 'runs': {'base': {'q':'question', 'overlay':'base', 'points':['SECRET GOLD']}}}}
         (folder / 'record.json').write_text(json.dumps(rec))
         a = argparse.Namespace(cid='C-0001', write_template=False)
         out = kc.cmd_next(self.root, a)

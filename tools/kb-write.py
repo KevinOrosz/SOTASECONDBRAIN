@@ -1657,5 +1657,30 @@ def main(argv=None) -> int:
     return 0
 
 
+def make_approval_args(verb, environ, root):
+    if verb not in ("land", "unland"):
+        raise ValueError("expected land or unland")
+    proposal = environ.get("ID", "")
+    actor = environ.get("OWNER") or owner(root)
+    mode = environ.get("APPROVAL") or "--confirm"
+    if not ID_RE.fullmatch(proposal) or not isinstance(actor, str) or not OWNER_RE.fullmatch(actor):
+        raise ValueError("provide a valid proposal ID and owner")
+    if mode not in ("--confirm", "--non-interactive"):
+        raise ValueError("APPROVAL must be --confirm or --non-interactive")
+    args = [verb, proposal, "--endorsed-by", actor, mode]
+    if verb == "unland":
+        reason = environ.get("REASON", "")
+        if not reason.strip():
+            raise ValueError("provide a reason for unland")
+        args.append("--reason=" + reason)
+    return args
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--make-approval"]:
+        try:
+            args = make_approval_args(sys.argv[2] if len(sys.argv) == 3 else "", os.environ, TOOLS.parent)
+        except (Fail, ValueError) as exc:
+            sys.exit(str(exc))
+        sys.exit(main(args))
     sys.exit(main())
