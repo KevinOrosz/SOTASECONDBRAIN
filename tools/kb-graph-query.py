@@ -148,23 +148,49 @@ class Graph:
 
 # ---------------------------------------------------------------- verbs
 
-def build_fts(root: Path, graph: Graph):
-    """One in-memory FTS5 table over section bodies. ~0.2s for 3.3k sections."""
+def search_articles(root: Path, approved=None):
+    """Derive search text and metadata from the same bytes, never from cache paths."""
+    wiki = root / "KB/wiki"
+    if wiki.resolve() != wiki:
+        raise ValueError("wiki must be a canonical directory")
+    index = load_sibling("kb-index.py")
+    relations = load_sibling("kb-graph.py")
+    records, bodies = {}, {}
+    for path in sorted(wiki.rglob("*.md")):
+        if path.name == "_index.md" or path.resolve() != path or not path.is_file():
+            continue
+        if approved is None:
+            raw = path.read_bytes()
+        else:
+            status, text, _ = approved.page(path.relative_to(wiki).as_posix())
+            if status != "approved":
+                continue
+            raw = text.encode("utf-8")
+        art = index.parse_article(path, root, raw)
+        text = raw.decode("utf-8", errors="replace")
+        meta = {key.lower(): value for key, value in index.META_RE.findall(text)}
+        art["declared_category"] = meta.get("category", art["category"]).strip()
+        art["source_names"] = list(dict.fromkeys(relations.parse_sources_line(meta.get("sources", ""))
+                                                + [src[4:] for src in art["sources"]]))
+        art["neighbors"] = {relations.norm_target(match.group(2)) for match in relations.LINK_RE.finditer(text)
+                            if not match.group(1) and not relations.is_raw_link(match.group(2))}
+        records[art["stem"]] = art
+        bodies[art["stem"]] = text
+    return records, bodies
+
+
+def build_fts(articles, bodies):
+    """One in-memory FTS5 table over canonical source bytes."""
     db = sqlite3.connect(":memory:")
     try:
         db.execute("CREATE VIRTUAL TABLE s USING fts5(sid UNINDEXED, stem UNINDEXED, "
                    "heading UNINDEXED, body, tokenize='porter unicode61')")
     except sqlite3.OperationalError:
+        db.close()
         return None
-    secs = defaultdict(list)
-    for s in graph.g["nodes"]["section"]:
-        secs[s["article"]].append(s)
     rows = []
-    for stem, art in graph.articles.items():
-        try:
-            text = (root / art["path"]).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+    for stem, art in articles.items():
+        text = bodies[stem]
         bounds = [(m.start(), m.group(2)) for m in
                   re.finditer(r"^(#{2,3})\s+(.+?)\s*$", text, re.M)]
         for i, (start, heading) in enumerate(bounds):
@@ -176,7 +202,7 @@ def build_fts(root: Path, graph: Graph):
     return db
 
 
-def verb_search(root: Path, graph: Graph, query: str, k: int):
+def verb_search(root: Path, graph: Graph, query: str, k: int, *, approved=None):
     terms = tokenize(query)
     if not terms:
         return {"error": "no searchable terms"}
@@ -185,7 +211,8 @@ def verb_search(root: Path, graph: Graph, query: str, k: int):
     # silently returns almost nothing on a 4-word question.
     bm25_rank, best_section = [], {}
     fallback = ""
-    db = build_fts(root, graph)
+    articles, bodies = search_articles(root, approved)
+    db = build_fts(articles, bodies)
     if db is not None:
         expr = " OR ".join('"%s"' % t for t in terms)
         try:
@@ -202,18 +229,18 @@ def verb_search(root: Path, graph: Graph, query: str, k: int):
     else:
         fallback = "SQLite FTS5 unavailable; keyword fallback (no stemming)"
 
-    # list 2 — the existing field-weighted scorer, reused verbatim so the two agree.
-    # Degrades to BM25-only rather than crashing: kb-index.json is a separate artifact with its
-    # own build step, and a missing index must not take the whole graph query surface down.
-    kw_rank, degraded = [], fallback
-    index_path = root / "KB" / "output" / "kb-index.json"
-    if index_path.exists():
-        kwq = load_sibling("kb-query.py")
-        arts = json.loads(index_path.read_text(encoding="utf-8")).get("articles", [])
-        _, kw_hits = kwq.rank(arts, query, kwq.build_indegree(arts), k=200)
-        kw_rank = [h["stem"] for h in kw_hits]
-    else:
-        degraded = "; ".join(x for x in (fallback, "kb-index.json missing; run bin/kb index") if x)
+    # Score the same verified bytes as BM25, including their own link metadata.
+    kwq = load_sibling("kb-query.py")
+    records = list(articles.values())
+    incoming = defaultdict(int)
+    for art in records:
+        art["neighbors"].intersection_update(articles)
+        art["neighbors"].discard(art["stem"])
+        for stem in art["neighbors"]:
+            incoming[stem] += 1
+    indegree = kwq.build_indegree(records)
+    _, kw_hits = kwq.rank(records, query, indegree, k=200)
+    kw_rank = [hit["stem"] for hit in kw_hits]
 
     # fusion — RRF beats tuned weighted sums and needs no calibration.
     fused = defaultdict(float)
@@ -226,20 +253,22 @@ def verb_search(root: Path, graph: Graph, query: str, k: int):
     ranked = sorted(fused.items(), key=lambda kv: (-kv[1], kv[0]))[:k]
     results = []
     for stem, score in ranked:
-        a = graph.articles.get(stem)
+        a = articles.get(stem)
         if not a:
             continue
         heading, bscore = best_section.get(stem, ("", None))
         results.append({
-            "stem": stem, "path": a["path"], "category": a["category"], "title": a["title"],
+            "stem": stem, "path": a["path"], "category": a["declared_category"], "title": a["title"],
             "claim": a["claim"][:220], "rrf": round(score, 5), "signals": contrib[stem],
             "best_section": heading, "bm25": bscore,
-            "links_in": len(graph.inn.get(stem, [])), "links_out": len(graph.out.get(stem, [])),
-            "sources": graph.sources.get(stem, []),
+            "links_in": incoming[stem], "links_out": len(a["neighbors"]),
+            "sources": a["source_names"],
         })
+    if approved is not None:
+        approved.check_snapshot()
     return {"query": query, "terms": terms, "verb": "search",
             "fusion": "RRF(bm25_sections*%.1f, field_keyword*1.0)" % BM25_WEIGHT,
-            "degraded": degraded, "retrieval": {"ranker": "keyword" if fallback else "hybrid-graph",
+            "degraded": fallback, "retrieval": {"ranker": "keyword" if fallback else "hybrid-graph",
             "k": k, "tool": "kb-graph-query.py", "stemming": not bool(fallback),
             "version": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12],
             "sqlite": sqlite3.sqlite_version}, "results": results}
@@ -574,18 +603,25 @@ def main(argv):
     ap.add_argument("args", nargs="*")
     ap.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--approved-only", action="store_true", help="require a seal and search only approved bytes")
     ap.add_argument("--k", type=int, default=8)
     ap.add_argument("--depth", type=int, default=1)
     a = ap.parse_args(argv[1:])
     if a.k < 1:
         ap.error("--k must be positive")
     root = Path(a.root).resolve()
-    graph = Graph(root)
+    graph = None if a.verb == "search" else Graph(root)
 
     if a.verb == "search":
         if not a.args:
             return ap.error("search needs a query")
-        res = verb_search(root, graph, " ".join(a.args), a.k)
+        try:
+            approved = None
+            if a.approved_only or (root / "KB/inbox/_seal.json").exists():
+                approved = load_sibling("kb-answers.py").Wiki(root)
+            res = verb_search(root, graph, " ".join(a.args), a.k, approved=approved)
+        except (ValueError, OSError) as exc:
+            res = {"error": str(exc)}
     elif a.verb == "connect":
         if len(a.args) < 2:
             return ap.error("connect needs two concepts")

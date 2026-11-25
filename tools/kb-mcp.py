@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -62,13 +63,20 @@ def run(root, tool_name, *args):
 def call(root, name, args):
     validate(name, args)
     if name == "kb_search":
-        return run(root, "kb-graph-query.py", "search", args["query"], "--k", str(args.get("k", 6)))
+        return run(root, "kb-graph-query.py", "search", args["query"], "--k", str(args.get("k", 6)), "--approved-only")
     if name == "kb_read":
-        wiki = (root / "KB/wiki").resolve()
-        path = (root / args["path"]).resolve()
-        if wiki not in path.parents or path.suffix != ".md" or not path.is_file():
-            raise ValueError("path must be a Markdown file within KB/wiki")
-        return {"path": path.relative_to(root).as_posix(), "content": path.read_text(encoding="utf-8")}
+        path = Path(args["path"])
+        if path.is_absolute() or path.as_posix() != args["path"] or path.parts[:2] != ("KB", "wiki"):
+            raise ValueError("expected a canonical KB/wiki article path")
+        spec = importlib.util.spec_from_file_location("kb_answers", TOOLS / "kb-answers.py")
+        answers = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(answers)
+        wiki = answers.Wiki(root)
+        status, content, _ = wiki.page(path.relative_to("KB/wiki").as_posix())
+        if status != "approved":
+            raise ValueError("article is missing or its approval hash does not match")
+        wiki.check_snapshot()
+        return {"path": path.as_posix(), "content": content}
     if name == "kb_status":
         return run(root, "kb-workflow.py", "status")
     if name == "kb_correction_next":

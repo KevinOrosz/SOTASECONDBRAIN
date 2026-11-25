@@ -39,8 +39,9 @@ SECTION_RE = re.compile(r"^##\s+(.+?)\s*$", re.M)
 LINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
 
-def parse_article(path: Path, root: Path = ROOT) -> dict:
-    raw = path.read_bytes()
+def parse_article(path: Path, root: Path = ROOT, raw=None) -> dict:
+    if raw is None:
+        raw = path.read_bytes()
     text = raw.decode("utf-8", errors="replace")
     title_m = H1_RE.search(text)
     meta = {k.lower(): v for k, v in META_RE.findall(text)}
@@ -137,8 +138,8 @@ def dashboard_html(index: dict, title: str = "Knowledge Base") -> str:
             for a in index["articles"]
         ],
         ensure_ascii=False,
-    ).replace("</", "<\\/")
-    cats = json.dumps(index["categories"])
+    ).replace("<", "\\u003c")
+    cats = json.dumps(index["categories"]).replace("<", "\\u003c")
     return (
         """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -193,21 +194,57 @@ const norm=s=>(s||'').toLowerCase();
 function hay(a){return norm(a.title+' '+a.claim+' '+a.category+' '+a.stem+' '+(a.links||[]).join(' '))}
 function match(a,q){if(activeCat&&a.category!==activeCat)return false;
   if(!q)return true;const h=hay(a);return q.split(/\\s+/).every(t=>h.includes(t))}
-function render(){const q=norm($('q').value.trim());
-  const hits=DATA.filter(a=>match(a,q));
+function element(tag, className, value) {
+  const node=document.createElement(tag);
+  if(className) node.className=className;
+  if(value!=null) node.textContent=value;
+  return node;
+}
+function render(){
+  const hits=DATA.filter(a=>match(a,$('q').value.trim()));
   $('count').textContent=hits.length+' of '+DATA.length+(activeCat?' · '+activeCat:'');
-  $('list').innerHTML=hits.slice(0,400).map(a=>'<div class="row'+(sel===a.stem?' sel':'')+'" data-s="'+a.stem+'">'+
-    '<div class="t">'+esc(a.title)+'</div><div class="c">'+a.category+' · '+a.words+'w</div></div>').join('')
-    ||'<div class="empty">No hits. Loosen the query.</div>';}
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
-function show(stem){sel=stem;const a=DATA.find(x=>x.stem===stem);if(!a)return;
-  $('detail').innerHTML='<h2>'+esc(a.title)+'</h2>'+
-  '<div class="meta">'+a.category+' · updated '+(a.updated||'?')+' · '+a.words+' words · <span class="src">'+esc(a.path)+'</span></div>'+
-  (a.claim?'<div class="claim">'+esc(a.claim)+'</div>':'')+
-  (a.sources&&a.sources.length?'<div class="sec"><b>Sources:</b><br>'+a.sources.map(s=>'<span class="src">'+esc(s)+'</span>').join('<br>')+'</div>':'')+
-  (a.links&&a.links.length?'<div class="sec"><b>Connections:</b><br>'+a.links.map(l=>'<span class="lnk" data-l="'+esc(l)+'">'+esc(l)+'</span>').join('')+'</div>':'');
-  render();}
-$('chips').innerHTML=CATS.map(c=>'<button class="chip" data-c="'+c+'">'+c+'</button>').join('');
+  const list=$('list');
+  list.replaceChildren();
+  for(const a of hits.slice(0,400)){
+    const row=element('div',sel===a.stem?'row sel':'row');
+    row.dataset.s=a.stem;
+    row.append(element('div','t',a.title),element('div','c',a.category+' · '+a.words+'w'));
+    list.append(row);
+  }
+  if(!hits.length) list.append(element('div','empty','No hits. Loosen the query.'));
+}
+function show(stem){
+  const a=DATA.find(x=>x.stem===stem);
+  if(!a) return;
+  sel=stem;
+  const detail=$('detail');
+  const meta=element('div','meta',a.category+' · updated '+(a.updated||'?')+' · '+a.words+' words · ');
+  meta.append(element('span','src',a.path));
+  detail.replaceChildren(element('h2','',a.title),meta);
+  if(a.claim) detail.append(element('div','claim',a.claim));
+  if(a.sources.length){
+    const section=element('div','sec');
+    section.append(element('b','','Sources:'));
+    for(const source of a.sources) section.append(element('br'),element('span','src',source));
+    detail.append(section);
+  }
+  if(a.links.length){
+    const section=element('div','sec');
+    section.append(element('b','','Connections:'),element('br'));
+    for(const link of a.links){
+      const item=element('span','lnk',link);
+      item.dataset.l=link;
+      section.append(item);
+    }
+    detail.append(section);
+  }
+  render();
+}
+for(const category of CATS){
+  const chip=element('button','chip',category);
+  chip.dataset.c=category;
+  $('chips').append(chip);
+}
 document.addEventListener('click',e=>{
   const r=e.target.closest('.row');if(r){show(r.dataset.s);return}
   const ch=e.target.closest('.chip');if(ch){activeCat=activeCat===ch.dataset.c?null:ch.dataset.c;

@@ -27,7 +27,9 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import re
+import stat
 import sys
 from pathlib import Path
 
@@ -125,12 +127,37 @@ def judge_pass(res, answer: str, forbidden=(), expected_action=None) -> tuple:
     return (False, "forbidden literal %s" % hit) if hit else (True, "pass")
 
 
+def read_replay_manifest(root: Path):
+    """Return a complete regular manifest, or None if this instance has none."""
+    state = root.resolve() / REPLAY_ALL
+    if state.resolve() != state:
+        raise ValueError("replay state must stay inside the instance without symlinks")
+    path = state / "manifest.json"
+    try:
+        snapshot = path.lstat()
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(snapshot.st_mode) or snapshot.st_nlink != 1:
+        raise ValueError("replay manifest must be a single regular file without links")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        actual = os.fstat(stream.fileno())
+        if not os.path.samestat(snapshot, actual) or not stat.S_ISREG(actual.st_mode) or actual.st_nlink != 1:
+            raise ValueError("replay manifest changed while opening; retry")
+        value = json.load(stream)
+    if not isinstance(value, dict) or not isinstance(value.get("runs"), dict):
+        raise ValueError("invalid replay manifest; use --fresh")
+    return value
+
+
 def fresh_verdicts(root: Path, cases: list) -> dict:
     """case id -> (passed, reason) for answer cases with a fresh replay-all verdict; stale ones are left out."""
     d = root / REPLAY_ALL
     try:
-        man = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+        man = read_replay_manifest(root)
     except (OSError, ValueError):
+        return {}
+    if man is None:
         return {}
     out = {}
     for c in cases:

@@ -29,6 +29,10 @@ python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
 command -v git >/dev/null || { echo "need git (package versioning and legacy undo fallback)" >&2; exit 1; }
 say "python3 $(python3 -c 'import platform; print(platform.python_version())') and git found"
 
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+  say "Legacy Python runtime. Install a maintained Python 3.11 or newer for security updates."
+fi
+
 # 2. owner id + config
 if [ ! -f KB/kb.json ]; then
   if [ -z "$OWNER" ]; then

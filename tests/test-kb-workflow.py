@@ -203,8 +203,11 @@ class Workflow(unittest.TestCase):
 
     def test_next_replay_judge_sequence_keeps_blind_packet(self):
         folder = self.root / kc.CORR / 'C-0001'; folder.mkdir(parents=True)
+        with kc.new_scratch(self.root, 'C-0001') as work:
+            (work / 'base').mkdir()
+        self.addCleanup(kc.release_scratch, self.root, 'C-0001', str(work / 'base'), 'base')
         rec = {'cid':'C-0001','stage':'reviewed','await':'replay', 'validate': {
-            'base_overlay': str(self.root), 'runs': {'base': {'q':'question', 'overlay':'base', 'points':['SECRET GOLD']}}}}
+            'base_overlay': str(work / 'base'), 'runs': {'base': {'q':'question', 'overlay':'base', 'points':['SECRET GOLD']}}}}
         (folder / 'record.json').write_text(json.dumps(rec))
         a = argparse.Namespace(cid='C-0001', write_template=False)
         out = kc.cmd_next(self.root, a)
