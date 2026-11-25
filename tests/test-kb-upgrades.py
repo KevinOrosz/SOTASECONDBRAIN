@@ -209,6 +209,10 @@ class Upgrades(unittest.TestCase):
         trusted = mcp.call(self.root, "kb_search", {"query": "zebrafish"})
         self.assertEqual(trusted["results"][0]["path"], path)
         self.assertNotIn("Private fixture title", json.dumps(trusted))
+        alias = self.tmp / "root-alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        search = kb_testkit.load("kb-graph-query.py")
+        self.assertEqual(search.verb_search(alias, None, "zebrafish", 3)["results"][0]["path"], path)
         (self.root / path).write_text("# Unreviewed amber fixture")
         with self.assertRaisesRegex(ValueError, "approval hash"):
             mcp.call(self.root, "kb_read", {"path": path})

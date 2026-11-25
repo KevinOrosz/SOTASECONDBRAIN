@@ -150,6 +150,7 @@ class Graph:
 
 def search_articles(root: Path, approved=None):
     """Derive search text and metadata from the same bytes, never from cache paths."""
+    root = root.resolve()
     wiki = root / "KB/wiki"
     if wiki.resolve() != wiki:
         raise ValueError("wiki must be a canonical directory")

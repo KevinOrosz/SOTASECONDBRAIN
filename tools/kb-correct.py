@@ -966,6 +966,7 @@ def publish_replay_manifest(path: Path, data: dict) -> None:
 
 
 def cmd_replay_all(root: Path, a) -> dict:
+    root = root.resolve()
     d = root / CORR / "_replay-all"
     need(d.resolve() == d, "replay state must stay inside the instance without symlinks")
     man = d / "manifest.json"

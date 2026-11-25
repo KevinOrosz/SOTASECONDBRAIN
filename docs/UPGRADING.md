@@ -95,7 +95,7 @@ New lands already use `_objects/` for undo, including pages that existed before 
 
 ## Maintainer checks
 
-Run `make test`, `make verify`, and `make sandbox` from the candidate commit. CI repeats the checks on Linux and macOS with Python 3.9 and 3.12. Pin action updates to verified official commits and review them; this follows [GitHub's secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
+Run `make test`, `make verify`, and `make sandbox` from the candidate commit. CI repeats the checks on Linux and macOS with Python 3.9 and 3.12. The legacy Ubuntu/Python 3.9 check uses Ubuntu 24.04, which has an official Actions Python build. Pin action updates to verified official commits and review them; this follows [GitHub's secure-use guidance](https://docs.github.com/en/actions/reference/security/secure-use).
 
 This source change does not alter branch protection, enable automatic dependency-update jobs, publish a release, or claim a comparative performance benchmark. Maintainers should require green CI and review before merging.
 

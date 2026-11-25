@@ -65,12 +65,14 @@ class Workflow(unittest.TestCase):
 
     def test_checkpoint_comparison_and_ledger_tamper(self):
         wf.checkpoint(self.root)
-        self.assertEqual(wf.status(self.root)['retrieval']['delta'], 0)
+        report = wf.status(self.root)
+        self.assertEqual(report['retrieval']['delta'], 0)
+        self.assertIs(report['checkpoint_matches_ledger'], True)
         self.proposal()
         wf.checkpoint(self.root)
         ledger = self.root / kw.LEDGER
         ledger.write_text(ledger.read_text().replace('RESEARCHER', 'OTHER'))
-        self.assertFalse(wf.status(self.root)['checkpoint_matches_ledger'])
+        self.assertIs(wf.status(self.root)['checkpoint_matches_ledger'], False)
 
     def test_checkpoint_refuses_changed_inputs(self):
         stamp = wf.state_hash(self.root)
